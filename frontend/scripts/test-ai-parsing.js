@@ -62,6 +62,12 @@ const VALID_ACTIONS = new Set([
   'take_photo', 'record_audio', 'record_video',
   'copy_text', 'cut_text', 'paste_text', 'select_all',
   'ai_chat', 'ai_question', 'ai_audit', 'ai_compare', 'ai_solve',
+  // Bluetooth, calls, silent/DND, scan, remember/recall, reminder, close_app
+  'silent_mode', 'vibrate_mode', 'normal_mode', 'dnd_on', 'dnd_off',
+  'bluetooth_audio_on', 'bluetooth_audio_off',
+  'answer_call', 'decline_call', 'reject_call', 'silence_ringer',
+  'scan_qr', 'remember_fact', 'remember', 'recall_fact', 'recall',
+  'set_reminder', 'close_app',
 ]);
 
 function callOpenAI(userText) {
@@ -297,6 +303,26 @@ const TESTS = [
     check: (a) => /mom/i.test(a[0].params.contact) },
   { cmd: 'set alram for sevn am', expect: ['set_alarm'],
     check: (a) => Number(a[0].params.hour) === 7 },
+
+  // === Bluetooth, calls, silent/DND, scan, remember/recall, reminder, close ===
+  { cmd: 'silent the phone', expect: ['silent_mode'], check: () => true },
+  { cmd: 'put phone on vibrate', expect: ['vibrate_mode'], check: () => true },
+  { cmd: 'turn on do not disturb', expect: ['dnd_on'], check: () => true },
+  { cmd: 'turn off do not disturb', expect: ['dnd_off'], check: () => true },
+  { cmd: 'route audio to my bluetooth headset', expect: ['bluetooth_audio_on'], check: () => true },
+  { cmd: 'answer the call', expect: ['answer_call'], check: () => true },
+  { cmd: 'decline the call', expect: ['decline_call'], check: () => true },
+  { cmd: 'reject this call', expect: ['decline_call'], check: () => true },
+  { cmd: 'silence the ringer', expect: ['silence_ringer'], check: () => true },
+  { cmd: 'scan a qr code', expect: ['scan_qr'], check: () => true },
+  { cmd: 'remember that my passport number is X12345', expect: ['remember_fact'],
+    check: (a) => /passport|X12345/i.test(a[0].params.text || a[0].params.fact || '') },
+  { cmd: 'what is my passport number', expect: ['recall_fact'],
+    check: (a) => /passport/i.test(a[0].params.query || a[0].params.text || '') },
+  { cmd: 'remind me to drink water at 9 am', expect: ['set_reminder'],
+    check: (a) => Number(a[0].params.hour) === 9 && /water/i.test(a[0].params.text) },
+  { cmd: 'close whatsapp', expect: ['close_app'],
+    check: (a) => /whatsapp/i.test(a[0].params.appName || a[0].params.name || '') },
 ];
 
 (async () => {

@@ -570,6 +570,72 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
         promise.resolve(svc.clipboardAction(name))
     }
 
+    /** Set ringer mode: NORMAL | VIBRATE | SILENT. */
+    @ReactMethod
+    fun setRingerMode(mode: String, promise: Promise) {
+        try {
+            val am = reactApplicationContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            val target = when (mode.uppercase()) {
+                "NORMAL"  -> android.media.AudioManager.RINGER_MODE_NORMAL
+                "VIBRATE" -> android.media.AudioManager.RINGER_MODE_VIBRATE
+                "SILENT"  -> android.media.AudioManager.RINGER_MODE_SILENT
+                else -> { promise.reject("BAD_MODE", "Use NORMAL|VIBRATE|SILENT"); return }
+            }
+            am.ringerMode = target
+            promise.resolve(true)
+        } catch (e: SecurityException) {
+            // SILENT often requires DND policy access on Android 6+
+            try {
+                val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactApplicationContext.startActivity(intent)
+            } catch (_: Exception) {}
+            promise.reject("DND_PERMISSION", "Grant Do Not Disturb access first", e)
+        } catch (e: Exception) {
+            promise.reject("RINGER_ERR", e.message, e)
+        }
+    }
+
+    /** Set Do Not Disturb: ALL (off) | PRIORITY | ALARMS | NONE. */
+    @ReactMethod
+    fun setDoNotDisturb(filter: String, promise: Promise) {
+        try {
+            val nm = reactApplicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !nm.isNotificationPolicyAccessGranted) {
+                val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactApplicationContext.startActivity(intent)
+                promise.reject("DND_PERMISSION", "Grant Do Not Disturb access first")
+                return
+            }
+            val target = when (filter.uppercase()) {
+                "OFF", "ALL" -> android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+                "PRIORITY"   -> android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                "ALARMS"     -> android.app.NotificationManager.INTERRUPTION_FILTER_ALARMS
+                "NONE", "ON" -> android.app.NotificationManager.INTERRUPTION_FILTER_NONE
+                else -> { promise.reject("BAD_FILTER", "Use OFF|PRIORITY|ALARMS|NONE"); return }
+            }
+            nm.setInterruptionFilter(target)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DND_ERR", e.message, e)
+        }
+    }
+
+    /** Route audio input/output through Bluetooth SCO (hands-free / headset). */
+    @ReactMethod
+    fun setBluetoothAudio(on: Boolean, promise: Promise) {
+        try {
+            val am = reactApplicationContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            am.mode = if (on) android.media.AudioManager.MODE_IN_COMMUNICATION else android.media.AudioManager.MODE_NORMAL
+            am.isBluetoothScoOn = on
+            if (on) am.startBluetoothSco() else am.stopBluetoothSco()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("BT_AUDIO_ERR", e.message, e)
+        }
+    }
+
     @ReactMethod
     fun addListener(eventName: String) {
         // Keep NativeEventEmitter happy

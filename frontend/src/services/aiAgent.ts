@@ -103,7 +103,22 @@ ACTION CATALOG (use these exact names):
 68. cut_text                   params: {}
 69. paste_text                 params: {"text": "<optional text to put on clipboard before pasting>"}
 70. select_all                 params: {}
-71. ai_chat                    params: {"text": "<the user's question/audit/compare/solve/answer/chat request>"}  — for ANYTHING that is not a phone-control action: questions, math, reasoning, comparisons, audits, jokes, advice, explanations, "what is", "why", "how", "tell me about", "compare X and Y", "is this correct", etc.
+71. ai_chat                    params: {"text": "<the user's question/audit/compare/solve/answer/chat request>"}
+72. silent_mode                params: {}                          — full silent ringer
+73. vibrate_mode               params: {}                          — vibrate-only ringer
+74. normal_mode                params: {}                          — normal ringer
+75. dnd_on                     params: {}                          — Do Not Disturb on (priority only)
+76. dnd_off                    params: {}                          — Do Not Disturb off
+77. bluetooth_audio_on         params: {}                          — route mic + audio to BT headset
+78. bluetooth_audio_off        params: {}                          — back to phone speaker
+79. answer_call                params: {}                          — accessibility taps Answer/Accept on incoming call screen
+80. decline_call               params: {}                          — accessibility taps Decline/Reject
+81. silence_ringer             params: {}                          — instantly mute incoming call ringtone
+82. scan_qr                    params: {}                          — opens Google Lens to scan QR/barcode/text
+83. remember_fact              params: {"text": "<fact to remember>"}    — saves to Firestore /memories
+84. recall_fact                params: {"query": "<question about a fact>"}  — searches Firestore /memories via AI
+85. set_reminder               params: {"text": "<what>", "hour": "<0-23>", "minute": "<0-59>"}
+86. close_app                  params: {"appName": "<app name>"}   — best-effort close via Recents (Android can't fully kill other apps)
 
 CRITICAL FALLBACK RULE:
 - If a user's command does NOT clearly match any phone-control action above (1-70),
@@ -280,6 +295,36 @@ Response: {"actions":[{"action":"ai_chat","params":{"text":"audit my last note f
 
 User: "solve x squared plus 5x plus 6 equals 0"
 Response: {"actions":[{"action":"ai_chat","params":{"text":"solve x squared plus 5x plus 6 equals 0"}}]}
+
+User: "remember that my passport number is X12345"
+Response: {"actions":[{"action":"remember_fact","params":{"text":"my passport number is X12345"}}]}
+
+User: "what is my passport number" / "what's my address" / "do you remember my X"
+Response: {"actions":[{"action":"recall_fact","params":{"query":"passport number"}}]}
+
+User: "remind me to drink water at 9 am"
+Response: {"actions":[{"action":"set_reminder","params":{"text":"drink water","hour":"9","minute":"0"}}]}
+
+User: "close whatsapp"
+Response: {"actions":[{"action":"close_app","params":{"appName":"whatsapp"}}]}
+
+User: "answer the call" / "pick up"
+Response: {"actions":[{"action":"answer_call","params":{}}]}
+
+User: "decline the call" / "reject" / "hang up"
+Response: {"actions":[{"action":"decline_call","params":{}}]}
+
+User: "silent the phone" / "put phone on silent"
+Response: {"actions":[{"action":"silent_mode","params":{}}]}
+
+User: "turn on do not disturb"
+Response: {"actions":[{"action":"dnd_on","params":{}}]}
+
+User: "scan a qr code"
+Response: {"actions":[{"action":"scan_qr","params":{}}]}
+
+User: "route audio to my bluetooth headset"
+Response: {"actions":[{"action":"bluetooth_audio_on","params":{}}]}
 
 User: "tell me about quantum physics"
 Response: {"actions":[{"action":"ai_chat","params":{"text":"tell me about quantum physics"}}]}

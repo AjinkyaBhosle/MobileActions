@@ -1174,6 +1174,148 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
         return { success: true, message: 'Selected all', spoken: 'Selected all' };
       }
 
+      // ── Ringer / silent / DND ──
+      case 'silent_mode':
+      case 'normal_mode':
+      case 'vibrate_mode': {
+        const mode = action === 'silent_mode' ? 'SILENT' : action === 'vibrate_mode' ? 'VIBRATE' : 'NORMAL';
+        try { await WakeWordModule.setRingerMode(mode); } catch (e: any) {
+          if (e?.code === 'DND_PERMISSION') {
+            return { success: false, message: 'Grant DND access to silent the phone', spoken: 'Please grant Do Not Disturb access' };
+          }
+        }
+        speak(action === 'silent_mode' ? 'Silenced' : action === 'vibrate_mode' ? 'Vibrate mode' : 'Normal mode');
+        return { success: true, message: action.replace('_', ' '), spoken: action.replace('_', ' ') };
+      }
+      case 'dnd_on':
+      case 'dnd_off': {
+        const filter = action === 'dnd_on' ? 'PRIORITY' : 'OFF';
+        try { await WakeWordModule.setDoNotDisturb(filter); } catch (e: any) {
+          return { success: false, message: 'Grant DND access first', spoken: 'Please grant Do Not Disturb access' };
+        }
+        speak(action === 'dnd_on' ? 'Do not disturb on' : 'Do not disturb off');
+        return { success: true, message: action.replace('_', ' '), spoken: action.replace('_', ' ') };
+      }
+
+      // ── Bluetooth audio routing ──
+      case 'bluetooth_audio_on':
+      case 'bluetooth_audio_off': {
+        const on = action === 'bluetooth_audio_on';
+        try { await WakeWordModule.setBluetoothAudio(on); } catch (e) { console.warn(e); }
+        speak(on ? 'Routing audio to Bluetooth' : 'Audio back to phone');
+        return { success: true, message: on ? 'Bluetooth audio on' : 'Bluetooth audio off', spoken: on ? 'Bluetooth' : 'Phone audio' };
+      }
+
+      // ── Calls: answer / decline / silence ringer ──
+      case 'answer_call': {
+        const labels = ['answer', 'accept', 'pick up', 'receive'];
+        for (const l of labels) {
+          try { if (await WakeWordModule.accClickLabel(l)) { speak('Call answered'); return { success: true, message: 'Answered', spoken: 'Call answered' }; } } catch {}
+        }
+        return { success: false, message: 'No answer button visible. Enable accessibility.', spoken: 'No incoming call to answer' };
+      }
+      case 'decline_call':
+      case 'reject_call': {
+        const labels = ['decline', 'reject', 'dismiss', 'end call', 'hang up'];
+        for (const l of labels) {
+          try { if (await WakeWordModule.accClickLabel(l)) { speak('Call declined'); return { success: true, message: 'Declined', spoken: 'Call declined' }; } } catch {}
+        }
+        return { success: false, message: 'No decline button visible. Enable accessibility.', spoken: 'No call to decline' };
+      }
+      case 'silence_ringer': {
+        try { await WakeWordModule.setMute?.(true); } catch {}
+        speak('Silenced');
+        return { success: true, message: 'Ringer muted', spoken: 'Silenced' };
+      }
+
+      // ── Scan QR / barcode (open Google Lens) ──
+      case 'scan_qr': {
+        if (Platform.OS === 'android' && WakeWordModule?.launchAppByName) {
+          try {
+            const pkg = await WakeWordModule.launchAppByName('lens');
+            if (pkg) { speak('Opening Google Lens to scan'); return { success: true, message: 'Lens opened', spoken: 'Opening Lens to scan' }; }
+          } catch {}
+        }
+        await Linking.openURL('https://lens.google.com').catch(() => {});
+        speak('Opening Lens for scanning');
+        return { success: true, message: 'Lens opened', spoken: 'Opening Lens to scan' };
+      }
+
+      // ── Remember / recall facts (persist to Firestore) ──
+      case 'remember_fact':
+      case 'remember': {
+        const fact = (params.text || params.fact || '').toString().trim();
+        if (!fact) return { success: false, message: 'Remember what?', spoken: 'What should I remember?' };
+        try {
+          const { db } = await import('./firebaseConfig');
+          const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+          await addDoc(collection(db, 'memories'), { text: fact, created_at: serverTimestamp() });
+          speak('Got it, I will remember');
+          return { success: true, message: `Remembered: "${fact}"`, spoken: 'I will remember that' };
+        } catch (e: any) {
+          return { success: false, message: 'Could not save: ' + (e?.message || ''), spoken: 'Could not remember that' };
+        }
+      }
+      case 'recall_fact':
+      case 'recall': {
+        const query = (params.text || params.query || '').toString().trim();
+        try {
+          const { db } = await import('./firebaseConfig');
+          const { getDocs, query: fbQuery, collection, orderBy, limit } = await import('firebase/firestore');
+          const snap = await getDocs(fbQuery(collection(db, 'memories'), orderBy('created_at', 'desc'), limit(50)));
+          const facts = snap.docs.map(d => (d.data() as any).text).filter(Boolean);
+          if (facts.length === 0) {
+            speak('I have nothing remembered yet');
+            return { success: true, message: 'No memories', spoken: 'I have nothing remembered yet' };
+          }
+          const { chat } = await import('./aiAgent');
+          const sys = 'You receive a question and a list of remembered facts. Reply with the single most relevant fact in 1 short sentence. If none match, say "I do not have that information yet."';
+          const reply = await chat(sys, `Question: ${query || 'what do I have'}\nFacts:\n${facts.map((f, i) => `${i + 1}. ${f}`).join('\n')}`);
+          speak(reply);
+          return { success: true, message: reply, spoken: reply };
+        } catch (e: any) {
+          return { success: false, message: 'Could not recall: ' + (e?.message || ''), spoken: 'Could not recall' };
+        }
+      }
+
+      // ── Set reminder (alarm with label) ──
+      case 'set_reminder': {
+        const text = (params.text || params.label || 'Reminder').toString();
+        const hour = parseInt((params.hour || '9').toString(), 10);
+        const minute = parseInt((params.minute || '0').toString(), 10);
+        if (Platform.OS === 'android') {
+          try {
+            await IntentLauncher.startActivityAsync('android.intent.action.SET_ALARM', {
+              extra: {
+                'android.intent.extra.alarm.HOUR': hour,
+                'android.intent.extra.alarm.MINUTES': minute,
+                'android.intent.extra.alarm.SKIP_UI': true,
+                'android.intent.extra.alarm.MESSAGE': text,
+              },
+            });
+          } catch (e) { console.warn(e); }
+        }
+        speak(`Reminder set for ${hour}:${minute.toString().padStart(2, '0')}`);
+        return { success: true, message: `Reminder: ${hour}:${minute.toString().padStart(2, '0')} ${text}`, spoken: `Reminder set` };
+      }
+
+      // ── Close app (best-effort via Recents) ──
+      case 'close_app': {
+        const name = (params.appName || params.name || '').toString();
+        try { await WakeWordModule.accGlobalAction?.('HOME'); } catch {}
+        await new Promise(r => setTimeout(r, 300));
+        if (name) {
+          try { await WakeWordModule.accGlobalAction?.('RECENTS'); } catch {}
+          await new Promise(r => setTimeout(r, 700));
+          for (const l of [`close ${name.toLowerCase()}`, `dismiss ${name.toLowerCase()}`, 'clear all', 'close all']) {
+            try { if (await WakeWordModule.accClickLabel?.(l)) break; } catch {}
+          }
+        }
+        speak(name ? `Closed ${name}` : 'Closed');
+        return { success: true, message: name ? `Closed ${name}` : 'App closed (best effort)', spoken: name ? `Closed ${name}` : 'Closed' };
+      }
+
+
       // ── AI chat / question / audit / compare / solve / answer ──
       // Free-form OpenAI Q&A. Handles: 'compare X and Y', 'audit my last note',
       // 'solve 2x+5=11', 'what is the capital of France', 'why is the sky blue',
