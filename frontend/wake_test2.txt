@@ -1,0 +1,49 @@
+﻿--------- beginning of main
+04-28 02:57:50.506 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "hey mobile"
+04-28 02:57:51.061 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:57:51.061 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:57:54.020 D/WakeWordService(10048): Result: "flashlight on" (commandState=true)
+04-28 02:57:54.047 D/WakeWordService(10048): >>> COMMAND EXECUTED: "flashlight on"
+04-28 02:57:55.826 D/WakeWordService(10048): Listening for: WAKE WORD
+04-28 02:58:03.189 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "mobile"
+04-28 02:58:03.775 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:58:03.775 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:58:06.513 D/WakeWordService(10048): Result: "flashlight off" (commandState=true)
+04-28 02:58:06.529 D/WakeWordService(10048): >>> COMMAND EXECUTED: "flashlight off"
+04-28 02:58:08.365 D/WakeWordService(10048): Listening for: WAKE WORD
+04-28 02:58:12.133 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "mobile"
+04-28 02:58:12.691 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:58:12.691 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:58:15.658 D/WakeWordService(10048): Result: "on" (commandState=true)
+04-28 02:58:15.689 D/WakeWordService(10048): >>> COMMAND EXECUTED: "on"
+04-28 02:58:17.496 D/WakeWordService(10048): Listening for: WAKE WORD
+04-28 02:58:19.262 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "mobile"
+04-28 02:58:19.827 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:58:19.828 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:58:22.409 D/WakeWordService(10048): Result: "off" (commandState=true)
+04-28 02:58:22.424 D/WakeWordService(10048): >>> COMMAND EXECUTED: "off"
+04-28 02:58:24.272 D/WakeWordService(10048): Listening for: WAKE WORD
+04-28 02:58:27.789 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "mobile"
+04-28 02:58:28.315 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:58:28.315 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:58:31.239 D/WakeWordService(10048): Result: "on" (commandState=true)
+04-28 02:58:31.267 D/WakeWordService(10048): >>> COMMAND EXECUTED: "on"
+04-28 02:58:33.027 D/WakeWordService(10048): Listening for: WAKE WORD
+04-28 02:58:35.150 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "mobile"
+04-28 02:58:35.673 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:58:35.673 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:58:38.196 D/WakeWordService(10048): Result: "off" (commandState=true)
+04-28 02:58:38.208 D/WakeWordService(10048): >>> COMMAND EXECUTED: "off"
+04-28 02:58:40.024 D/WakeWordService(10048): Listening for: WAKE WORD
+04-28 02:58:42.556 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "mobile"
+04-28 02:58:43.098 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:58:43.098 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:58:45.820 D/WakeWordService(10048): Result: "on" (commandState=true)
+04-28 02:58:45.840 D/WakeWordService(10048): >>> COMMAND EXECUTED: "on"
+04-28 02:58:47.617 D/WakeWordService(10048): Listening for: WAKE WORD
+04-28 02:58:49.146 D/WakeWordService(10048): >>> WAKE WORD DETECTED: "mobile"
+04-28 02:58:49.701 D/WakeWordService(10048): Listening for: COMMAND
+04-28 02:58:49.702 D/WakeWordService(10048): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:58:55.048 D/WakeWordService(10048): Result: "flashlight off" (commandState=true)
+04-28 02:58:55.063 D/WakeWordService(10048): >>> COMMAND EXECUTED: "flashlight off"
+04-28 02:58:56.865 D/WakeWordService(10048): Listening for: WAKE WORD

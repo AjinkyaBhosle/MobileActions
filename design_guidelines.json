@@ -1,0 +1,104 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 7: Electric & Neon (Adapted for Offline Tech Utility)",
+  "vibe": "Futuristic, Tactile, Offline, Reliable",
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Manrope",
+    "hierarchy": {
+      "h1": "text-4xl tracking-tight leading-none text-[#FFFFFF]",
+      "h2": "text-2xl tracking-tight text-[#FFFFFF]",
+      "h3": "text-xl tracking-tight text-[#FFFFFF]",
+      "body": "text-base leading-relaxed text-[#B0A0C8]",
+      "label": "text-xs tracking-[0.2em] uppercase text-[#B0A0C8]"
+    }
+  },
+  "colors": {
+    "background": {
+      "deep": "#1A0E2E",
+      "surface": "#241542"
+    },
+    "brand": {
+      "primary": "#713F9E",
+      "dark_purple": "#4D2B73",
+      "accent_cyan": "#A0D7E8"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#B0A0C8"
+    },
+    "gradients": {
+      "orb": "bg-gradient-to-br from-[#713F9E] to-[#4D2B73]",
+      "page_background": "bg-gradient-to-b from-[#1A0E2E] to-[#241542]"
+    }
+  },
+  "layout_and_spacing": {
+    "container": "w-full max-w-md mx-auto h-[100dvh] flex flex-col justify-between p-6 overflow-hidden relative",
+    "spacing_scale": "p-2, p-4, p-6, p-8",
+    "border_radius": {
+      "card": "rounded-2xl",
+      "pill": "rounded-full"
+    },
+    "shadows": {
+      "orb_glow": "shadow-[0_0_40px_rgba(113,63,158,0.5)]",
+      "orb_glow_active": "shadow-[0_0_60px_rgba(160,215,232,0.4)]",
+      "surface": "shadow-lg shadow-black/30"
+    }
+  },
+  "components": {
+    "animated_voice_orb": {
+      "description": "Central interactive voice control button.",
+      "classes": "relative w-32 h-32 rounded-full flex items-center justify-center bg-gradient-to-br from-[#713F9E] to-[#4D2B73] border-4 border-[#4D2B73]/50 shadow-[0_0_40px_rgba(113,63,158,0.6)] z-20 cursor-pointer",
+      "motion": "framer-motion pulse. scale: [1, 1.05, 1], shadow shifting when listening.",
+      "data_testid": "voice-orb-button"
+    },
+    "voice_command_status": {
+      "description": "Text area showing current listening status or user transcript.",
+      "classes": "text-center text-xl font-medium text-[#FFFFFF] min-h-[3rem] mt-6 z-20",
+      "data_testid": "voice-status-display"
+    },
+    "quick_action_chips": {
+      "description": "Suggested offline commands grid.",
+      "container_classes": "flex flex-wrap gap-3 justify-center mt-auto mb-6 z-20",
+      "item_classes": "px-4 py-2 rounded-full bg-[#241542] border border-[#4D2B73] text-[#B0A0C8] text-sm hover:bg-[#4D2B73] hover:text-[#FFFFFF] transition-colors flex items-center gap-2",
+      "data_testid": "quick-action-chip"
+    },
+    "command_history_area": {
+      "description": "Glassmorphic overlay/list for past executed actions.",
+      "classes": "w-full bg-[#241542]/80 backdrop-blur-xl rounded-2xl p-4 border border-[#4D2B73]/50 mt-4 overflow-y-auto max-h-[25vh] z-20",
+      "data_testid": "command-history-list"
+    },
+    "greeting_header": {
+      "description": "Top section with logo/brand and connection status.",
+      "classes": "flex items-center justify-between w-full py-2 z-20",
+      "badge_classes": "px-3 py-1 rounded-full bg-[#1A0E2E] border border-[#A0D7E8]/30 text-[#A0D7E8] text-xs flex items-center gap-2 font-mono uppercase tracking-wider",
+      "data_testid": "greeting-header"
+    },
+    "background_decoration": {
+      "description": "Abstract circuit board aesthetic mimicking the user logo theme.",
+      "classes": "absolute inset-0 z-0 opacity-20 bg-[radial-gradient(circle_at_center,rgba(113,63,158,0.2)_0%,rgba(26,14,46,0)_70%)]",
+      "data_testid": "bg-decoration"
+    }
+  },
+  "motion_and_interactions": {
+    "orb_listening": "Infinite pulse animation with easeInOut. Scale 1 to 1.1 to 1. Duration: 1.5s.",
+    "chip_entrance": "Staggered fade-up animation from the bottom using framer-motion.",
+    "history_item": "Fade in and slide left transition."
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "weight": "duotone",
+    "rationale": "Matches the techy, futuristic, and tactile feel of a hardware-centric app."
+  },
+  "accessibility_and_testing": {
+    "test_ids_required": true,
+    "contrast": "Ensure text passes AA contrast on #241542 surface backgrounds.",
+    "focus_states": "focus:ring-2 focus:ring-[#A0D7E8] focus:outline-none"
+  },
+  "instructions_to_main_agent": {
+    "file_extensions": "Use .js and .jsx extensions exclusively. Do NOT use .tsx files.",
+    "ui_library": "Use framer-motion for the central orb animations, chip entrance staggering, and ripple effects. Build layout using pure Tailwind CSS utility classes.",
+    "offline_first": "Simulate local-only architecture. Hardcode suggested actions like Flashlight, Maps, Settings. Do not attempt external API logic.",
+    "layout_lock": "Ensure the layout spans exactly 100dvh to simulate a native mobile app view. Do not let the app scroll vertically at the document level; only scroll the command history list if needed."
+  }
+}

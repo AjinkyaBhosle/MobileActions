@@ -1,0 +1,10 @@
+﻿--------- beginning of main
+04-28 02:46:46.995 31346 31346 D WakeWordService: Result: "off flashlight" (commandState=true)
+04-28 02:46:46.995 31346 31346 D WakeWordService: Unrecognized command: "off flashlight" ΓÇö returning to wake state silently
+04-28 02:46:48.357 31346 31346 D WakeWordService: Listening for: WAKE WORD
+04-28 02:46:53.317 31346 31346 D WakeWordService: >>> WAKE WORD DETECTED: "hi mobile"
+04-28 02:46:53.893 31346 31346 D WakeWordService: Listening for: COMMAND
+04-28 02:46:53.893 31346 31346 D WakeWordService: >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:46:56.859 31346 31346 D WakeWordService: Result: "flashlight off" (commandState=true)
+04-28 02:46:56.875 31346 31346 D WakeWordService: >>> COMMAND EXECUTED: "flashlight off"
+04-28 02:46:58.714 31346 31346 D WakeWordService: Listening for: WAKE WORD

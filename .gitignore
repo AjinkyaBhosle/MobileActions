@@ -1,0 +1,10 @@
+﻿node_modules/
+.expo/
+.metro-cache/
+android/build/
+ios/build/
+bin/
+obj/
+*.zip
+.idea/
+.vscode/

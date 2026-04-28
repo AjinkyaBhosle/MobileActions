@@ -1,0 +1,57 @@
+﻿--------- beginning of main
+04-28 03:52:42.909 D/WakeWordService( 8583): WakeLock acquired ΓÇö CPU will stay active
+04-28 03:52:45.453 D/WakeWordService( 8583): Vosk model loaded successfully
+04-28 03:52:45.469 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:52:52.290 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "action"
+04-28 03:52:53.043 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:52:53.043 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:52:59.666 D/WakeWordService( 8583): Command timeout ΓÇö returning to wake state
+04-28 03:53:00.099 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:53:00.101 D/WakeWordService( 8583): Final: "the" (commandState=false)
+04-28 03:53:06.910 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "action"
+04-28 03:53:07.692 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:53:07.692 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:53:14.300 D/WakeWordService( 8583): Command timeout ΓÇö returning to wake state
+04-28 03:53:16.147 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:53:16.148 D/WakeWordService( 8583): Final: "hey mama" (commandState=false)
+04-28 03:53:18.183 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:53:19.032 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:53:19.032 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:53:25.605 D/WakeWordService( 8583): Command timeout ΓÇö returning to wake state
+04-28 03:53:26.475 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:53:34.069 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:53:34.869 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:53:34.869 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:53:41.448 D/WakeWordService( 8583): Command timeout ΓÇö returning to wake state
+04-28 03:53:43.438 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:53:43.439 D/WakeWordService( 8583): Final: "the mobile" (commandState=false)
+04-28 03:53:43.439 D/WakeWordService( 8583): >>> WAKE WORD via Final: "the mobile"
+04-28 03:53:44.112 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:53:44.112 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:53:49.771 D/WakeWordService( 8583): Result: "my" (commandState=true)
+04-28 03:53:49.771 D/WakeWordService( 8583): Unrecognized command: "my" ΓÇö returning to wake state silently
+04-28 03:53:51.447 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:53:58.669 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "action"
+04-28 03:53:59.471 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:53:59.471 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:54:06.047 D/WakeWordService( 8583): Command timeout ΓÇö returning to wake state
+04-28 03:54:07.889 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:54:07.890 D/WakeWordService( 8583): Final: "five" (commandState=false)
+04-28 03:54:13.560 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:54:14.330 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:54:14.330 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:54:20.905 D/WakeWordService( 8583): Command timeout ΓÇö returning to wake state
+04-28 03:54:22.666 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:54:22.667 D/WakeWordService( 8583): Final: "gone for and fun" (commandState=false)
+04-28 03:54:29.878 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "hey mobile"
+04-28 03:54:30.692 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:54:30.692 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:54:36.330 D/WakeWordService( 8583): Result: "last night" (commandState=true)
+04-28 03:54:36.331 D/WakeWordService( 8583): Unrecognized command: "last night" ΓÇö returning to wake state silently
+04-28 03:54:37.976 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:54:46.807 D/WakeWordService( 8583): >>> WAKE WORD DETECTED: "action"
+04-28 03:54:47.535 D/WakeWordService( 8583): Listening for: COMMAND
+04-28 03:54:47.535 D/WakeWordService( 8583): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:54:54.158 D/WakeWordService( 8583): Command timeout ΓÇö returning to wake state
+04-28 03:54:54.575 D/WakeWordService( 8583): Listening for: WAKE WORD
+04-28 03:54:54.578 D/WakeWordService( 8583): Final: "the" (commandState=false)

@@ -1,0 +1,74 @@
+﻿--------- beginning of main
+04-28 03:30:36.270 D/WakeWordService(30473): WakeLock acquired ΓÇö CPU will stay active
+04-28 03:30:41.412 D/WakeWordService(31474): WakeLock acquired ΓÇö CPU will stay active
+04-28 03:30:41.875 D/WakeWordService(31474): Vosk model loaded successfully
+04-28 03:30:41.912 D/WakeWordService(31474): Loaded 529 unique contact names into Vosk Grammar.
+04-28 03:30:41.957 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:30:45.707 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:30:46.291 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:30:46.291 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:30:48.830 D/WakeWordService(31474): Result: "flashlight on" (commandState=true)
+04-28 03:30:48.938 D/WakeWordService(31474): >>> COMMAND EXECUTED: "flashlight on"
+04-28 03:30:50.665 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:30:55.603 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:30:56.170 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:30:56.170 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:31:01.518 D/WakeWordService(31474): Result: "usman" (commandState=true)
+04-28 03:31:01.519 D/WakeWordService(31474): Unrecognized command: "usman" ΓÇö returning to wake state silently
+04-28 03:31:02.858 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:31:08.615 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:31:09.184 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:31:09.184 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:31:11.741 D/WakeWordService(31474): Result: "flashlight off" (commandState=true)
+04-28 03:31:11.772 D/WakeWordService(31474): >>> COMMAND EXECUTED: "flashlight off"
+04-28 03:31:13.597 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:31:16.552 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:31:17.106 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:31:17.106 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:31:20.661 D/WakeWordService(31474): Result: "call nine zero" (commandState=true)
+04-28 03:31:20.716 D/WakeWordService(31474): Contact not found for: nine zero
+04-28 03:31:20.719 D/WakeWordService(31474): Unrecognized command: "call nine zero" ΓÇö returning to wake state silently
+04-28 03:31:20.987 D/WakeWordService(31474): Final: "pooja" (commandState=false)
+04-28 03:31:22.023 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:31:23.586 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "hi mobile"
+04-28 03:31:24.166 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:31:24.166 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:31:30.920 D/WakeWordService(31474): Command timeout ΓÇö returning to wake state
+04-28 03:31:31.274 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:31:31.815 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:31:32.376 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:31:32.376 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:31:38.938 D/WakeWordService(31474): Result: "call nine tail eight call zero four five four seven five" (commandState=true)
+04-28 03:31:38.973 D/WakeWordService(31474): Initiated call to: 98045475
+04-28 03:31:38.973 D/WakeWordService(31474): >>> COMMAND EXECUTED: "call nine tail eight call zero four five four seven five"
+04-28 03:31:40.773 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:31:46.915 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "hey mobile"
+04-28 03:31:47.493 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:31:47.493 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:31:50.048 D/WakeWordService(31474): Result: "flashlight on" (commandState=true)
+04-28 03:31:50.077 D/WakeWordService(31474): >>> COMMAND EXECUTED: "flashlight on"
+04-28 03:31:51.880 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:31:57.034 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:31:57.622 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:31:57.622 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:32:00.369 D/WakeWordService(31474): Result: "flashlight off" (commandState=true)
+04-28 03:32:00.386 D/WakeWordService(31474): >>> COMMAND EXECUTED: "flashlight off"
+04-28 03:32:02.228 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:32:05.182 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "mobile"
+04-28 03:32:05.757 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:32:05.757 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:32:07.527 D/WakeWordService(31474): Result: "on" (commandState=true)
+04-28 03:32:07.557 D/WakeWordService(31474): >>> COMMAND EXECUTED: "on"
+04-28 03:32:07.848 D/WakeWordService(31474): Final: "nine" (commandState=false)
+04-28 03:32:09.383 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:32:12.141 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "hi mobile"
+04-28 03:32:12.685 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:32:12.685 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:32:19.449 D/WakeWordService(31474): Command timeout ΓÇö returning to wake state
+04-28 03:32:19.766 D/WakeWordService(31474): Listening for: WAKE WORD
+04-28 03:32:23.696 D/WakeWordService(31474): >>> WAKE WORD DETECTED: "hi mobile"
+04-28 03:32:24.275 D/WakeWordService(31474): Listening for: COMMAND
+04-28 03:32:24.275 D/WakeWordService(31474): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 03:32:26.836 D/WakeWordService(31474): Result: "off" (commandState=true)
+04-28 03:32:26.852 D/WakeWordService(31474): >>> COMMAND EXECUTED: "off"
+04-28 03:32:28.687 D/WakeWordService(31474): Listening for: WAKE WORD

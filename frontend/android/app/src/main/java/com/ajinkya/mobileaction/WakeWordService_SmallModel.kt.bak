@@ -1,0 +1,521 @@
+package com.ajinkya.mobileaction
+
+import android.app.Service
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.pm.ServiceInfo
+import android.content.Intent
+import android.os.Binder
+import android.os.IBinder
+import android.os.Build
+import android.os.PowerManager
+import android.util.Log
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.content.Context
+import androidx.core.app.NotificationCompat
+import android.provider.ContactsContract
+import org.json.JSONObject
+import org.vosk.Model
+import org.vosk.Recognizer
+import org.vosk.android.RecognitionListener
+import org.vosk.android.SpeechService
+import org.vosk.android.StorageService
+import java.io.IOException
+
+class WakeWordService : Service(), RecognitionListener {
+    private var model: Model? = null
+    private var speechService: SpeechService? = null
+    private val binder = WakeWordBinder()
+    private val TAG = "WakeWordService"
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    inner class WakeWordBinder : Binder() {
+        fun getService(): WakeWordService = this@WakeWordService
+    }
+
+    override fun onBind(intent: Intent?): IBinder = binder
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        showNotification()
+        
+        when (intent?.action) {
+            "FLASHLIGHT_ON" -> setFlashlight(true)
+            "FLASHLIGHT_OFF" -> setFlashlight(false)
+            "VOLUME_UP" -> adjustVolume(true)
+            "VOLUME_DOWN" -> adjustVolume(false)
+        }
+
+        return START_STICKY
+    }
+
+    private fun setFlashlight(state: Boolean) {
+        try {
+            val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = cameraManager.cameraIdList[0]
+            cameraManager.setTorchMode(cameraId, state)
+        } catch (e: Exception) {
+            Log.e(TAG, "Flashlight Error: ${e.message}")
+        }
+    }
+
+    private fun adjustVolume(increase: Boolean) {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val direction = if (increase) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
+        } catch (e: Exception) {
+            Log.e(TAG, "Volume Error: ${e.message}")
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        acquireWakeLock()
+        showNotification()
+        initModel()
+    }
+
+    /**
+     * Keep the CPU running so Vosk can process audio even when screen is off.
+     */
+    private fun acquireWakeLock() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "MobileAction::WakeWordLock"
+            )
+            wakeLock?.acquire()
+            Log.d(TAG, "WakeLock acquired — CPU will stay active")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire WakeLock: ${e.message}")
+        }
+    }
+
+    private fun showNotification() {
+        val channelId = "wake_word_service"
+        val channelName = "Wake Word Service"
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Mobile Action Assistant")
+            .setContentText("Hands-free listening active")
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(1, notification)
+            }
+        } catch (e: Exception) {
+            Log.e("WakeWordService", "Failed to start foreground service: ${e.message}")
+        }
+    }
+
+    private fun initModel() {
+        StorageService.unpack(this, "vosk-model", "model",
+            { model: Model? ->
+                this.model = model
+                Log.d(TAG, "Vosk model loaded successfully")
+                loadContactsIntoGrammar()
+                startListening()
+            },
+            { exception: IOException ->
+                Log.e(TAG, "Failed to unpack model: ${exception.message}")
+            }
+        )
+    }
+
+    private var isCommandState = false
+    private var isTransitioning = false
+    private var isFlashlightOn = false  // Track flashlight state for toggle/standalone commands
+    private val commandTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val WAKE_WORDS = arrayOf("hey mobile", "hi mobile", "hello mobile", "ok mobile", "yo mobile", "mobile", "action")
+    
+    private val WAKE_GRAMMAR = "[\"hey mobile\", \"hi mobile\", \"hello mobile\", \"ok mobile\", \"yo mobile\", \"mobile\", \"action\", \"[unk]\"]"
+    private var COMMAND_GRAMMAR = "[\"flashlight on\", \"flashlight off\", \"torch on\", \"torch off\", \"turn on flashlight\", \"turn off flashlight\", \"lights on\", \"lights off\", \"on\", \"off\", \"flashlight\", \"volume up\", \"volume down\", \"louder\", \"quieter\", \"make it louder\", \"make it quiet\", \"open camera\", \"take photo\", \"capture\", \"stop\", \"exit\", \"cancel\", \"call\", \"zero\", \"one\", \"two\", \"three\", \"four\", \"five\", \"six\", \"seven\", \"eight\", \"nine\", \"[unk]\"]"
+
+    private fun loadContactsIntoGrammar() {
+        try {
+            val names = mutableSetOf<String>()
+            val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+            val cursor = contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME), null, null, null)
+            cursor?.use {
+                val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                while (it.moveToNext()) {
+                    val fullName = it.getString(nameIndex) ?: ""
+                    // Split name and clean it for Vosk (lowercase, alphabetic only)
+                    val parts = fullName.split(" ")
+                    for (part in parts) {
+                        val cleaned = part.lowercase().replace(Regex("[^a-z]"), "")
+                        if (cleaned.isNotEmpty() && cleaned.length > 2) {
+                            names.add(cleaned)
+                        }
+                    }
+                }
+            }
+            
+            // Build the new grammar string
+            val baseCommands = listOf("flashlight on", "flashlight off", "torch on", "torch off", "lights on", "lights off", "turn on flashlight", "turn off flashlight", "on", "off", "flashlight", "volume up", "volume down", "louder", "quieter", "make it louder", "make it quiet", "open camera", "take photo", "capture", "stop", "exit", "cancel", "call", "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "[unk]")
+            
+            val allWords = mutableListOf<String>()
+            allWords.addAll(baseCommands)
+            allWords.addAll(names)
+            
+            // Format as JSON array string
+            val jsonArray = org.json.JSONArray(allWords)
+            COMMAND_GRAMMAR = jsonArray.toString()
+            Log.d(TAG, "Loaded ${names.size} unique contact names into Vosk Grammar.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load contacts for grammar: ${e.message}")
+        }
+    }
+
+    fun startListening() {
+        try {
+            if (model == null) {
+                Log.w(TAG, "Model not ready, cannot start listening")
+                return
+            }
+            
+            val grammar = if (isCommandState) COMMAND_GRAMMAR else WAKE_GRAMMAR
+            val rec = Recognizer(model, 16000.0f, grammar)
+            
+            speechService?.stop()
+            speechService = SpeechService(rec, 16000.0f)
+            speechService?.startListening(this)
+            Log.d(TAG, "Listening for: ${if (isCommandState) "COMMAND" else "WAKE WORD"}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Native Init Error: ${e.message}")
+            commandTimeoutHandler.postDelayed({ startListening() }, 2000)
+        }
+    }
+
+    fun stopListening() {
+        Log.d(TAG, "Assistant Paused")
+        speechService?.stop()
+        speechService = null
+        isCommandState = false
+        isTransitioning = false
+        commandTimeoutHandler.removeCallbacksAndMessages(null)
+    }
+
+    /**
+     * Extract the recognized text from Vosk's JSON response.
+     */
+    private fun extractText(json: String): String {
+        return try {
+            val obj = JSONObject(json)
+            val text = obj.optString("partial", "").ifEmpty {
+                obj.optString("text", "")
+            }
+            text.lowercase().trim()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse Vosk JSON: $json")
+            ""
+        }
+    }
+
+    override fun onPartialResult(hypothesis: String) {
+        val text = extractText(hypothesis)
+        if (text.isEmpty() || text == "[unk]") return
+        if (isTransitioning) return
+        
+        // Only use partials for WAKE WORD detection
+        if (!isCommandState) {
+            if (WAKE_WORDS.any { text.contains(it) }) {
+                Log.d(TAG, ">>> WAKE WORD DETECTED: \"$text\"")
+                enterCommandState()
+            }
+        }
+        // Commands wait for onResult/onFinalResult (complete phrases)
+    }
+
+    private fun isWakeWordOnly(text: String): Boolean {
+        return WAKE_WORDS.any { text.trim() == it }
+    }
+
+    private var lastWakeTimestamp = 0L
+
+    private fun enterCommandState() {
+        if (isCommandState) return
+        
+        val now = System.currentTimeMillis()
+        if (now - lastWakeTimestamp < 2000) {
+            Log.d(TAG, "Wake word cooldown active, ignoring")
+            return
+        }
+        lastWakeTimestamp = now
+        
+        isCommandState = true
+        isTransitioning = true
+        
+        // CRITICAL: Stop the old recognizer IMMEDIATELY to prevent stale
+        // results (like "mobile") from firing after we enter command state
+        speechService?.stop()
+        speechService = null
+        
+        vibrate(100)
+        sendBroadcast(Intent("onWakeTriggered"))
+        
+        // Clear old callbacks, then schedule new ones
+        commandTimeoutHandler.removeCallbacksAndMessages(null)
+        
+        // Start command grammar recognizer after brief pause
+        commandTimeoutHandler.postDelayed({
+            isTransitioning = false
+            startListening()
+            Log.d(TAG, ">>> COMMAND MODE ACTIVE — speak your command")
+        }, 200)
+
+        // Timeout back to wake state
+        commandTimeoutHandler.postDelayed({
+            if (isCommandState) {
+                Log.d(TAG, "Command timeout — returning to wake state")
+                isCommandState = false
+                isTransitioning = false
+                startListening()
+            }
+        }, 7000)
+    }
+
+    private fun handleCommandHypothesis(text: String) {
+        var commandExecuted = false
+
+        // Determine what keywords are present (Vosk may reorder words)
+        val hasFlashlight = text.contains("flashlight") || text.contains("torch") || text.contains("lights")
+        val hasOn = text.contains("on")
+        val hasOff = text.contains("off")
+
+        // Flashlight matching — keyword-based (handles "flashlight on", "on flashlight", "off flashlight", standalone "on"/"off")
+        if (hasFlashlight && hasOn && !hasOff) {
+            setFlashlight(true)
+            isFlashlightOn = true
+            commandExecuted = true
+        } else if (hasFlashlight && hasOff) {
+            setFlashlight(false)
+            isFlashlightOn = false
+            commandExecuted = true
+        } else if (text.trim() == "on") {
+            setFlashlight(true)
+            isFlashlightOn = true
+            commandExecuted = true
+        } else if (text.trim() == "off") {
+            setFlashlight(false)
+            isFlashlightOn = false
+            commandExecuted = true
+        } else if (hasFlashlight && !hasOn && !hasOff) {
+            // Just "flashlight" — toggle
+            isFlashlightOn = !isFlashlightOn
+            setFlashlight(isFlashlightOn)
+            commandExecuted = true
+        }
+        // Volume matching
+        else if (text.contains("volume up") || text.contains("louder") || text.contains("make it louder")) {
+            adjustVolume(true)
+            commandExecuted = true
+        } else if (text.contains("volume down") || text.contains("quieter") || text.contains("make it quiet")) {
+            adjustVolume(false)
+            commandExecuted = true
+        }
+        // Camera matching
+        else if (text.contains("open camera") || text.contains("take photo") || text.contains("capture")) {
+            try {
+                val cameraIntent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
+                cameraIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(cameraIntent)
+                commandExecuted = true
+            } catch (e: Exception) {}
+        }
+        // Stop / Exit
+        else if (text.contains("stop") || text.contains("exit") || text.contains("cancel")) {
+            commandExecuted = true
+        }
+        // Phone Calling
+        else if (text.startsWith("call ") || text.startsWith("dial ")) {
+            val target = text.removePrefix("call ").removePrefix("dial ").trim()
+            if (target.isNotEmpty()) {
+                val parsedDigits = parseSpokenNumber(target)
+                if (parsedDigits.length >= 7) {
+                    makePhoneCall(parsedDigits)
+                    commandExecuted = true
+                } else {
+                    val number = findContactNumber(target)
+                    if (number != null) {
+                        makePhoneCall(number)
+                        commandExecuted = true
+                    } else {
+                        Log.d(TAG, "Contact not found for: $target")
+                        vibrate(50) // gentle feedback that contact wasn't found
+                    }
+                }
+            }
+        }
+
+        if (commandExecuted) {
+            Log.d(TAG, ">>> COMMAND EXECUTED: \"$text\"")
+            
+            // Stop mic to prevent TTS feedback
+            speechService?.stop()
+            speechService = null
+            
+            isCommandState = false
+            isTransitioning = false
+            commandTimeoutHandler.removeCallbacksAndMessages(null)
+            
+            vibrate(80)
+            sendBroadcast(Intent("onCommandHandled"))
+            
+            // Restart after TTS finishes
+            commandTimeoutHandler.postDelayed({ startListening() }, 1500)
+        } else {
+            // Unrecognized — just silently return to wake state
+            // Do NOT relay to JS (it causes "Sorry I didn't understand" TTS which is annoying)
+            Log.d(TAG, "Unrecognized command: \"$text\" — returning to wake state silently")
+            
+            speechService?.stop()
+            speechService = null
+            
+            isCommandState = false
+            isTransitioning = false
+            commandTimeoutHandler.removeCallbacksAndMessages(null)
+            commandTimeoutHandler.postDelayed({ startListening() }, 1000)
+        }
+    }
+
+    private fun vibrate(duration: Long) {
+        try {
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(duration, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(duration)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Vibration failed: ${e.message}")
+        }
+    }
+
+    private fun makePhoneCall(number: String) {
+        try {
+            val intent = Intent(Intent.ACTION_CALL)
+            intent.data = android.net.Uri.parse("tel:$number")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            Log.d(TAG, "Initiated call to: $number")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Call failed: Missing CALL_PHONE permission")
+        } catch (e: Exception) {
+            Log.e(TAG, "Call failed: ${e.message}")
+        }
+    }
+
+    private fun findContactNumber(nameQuery: String): String? {
+        var phoneNumber: String? = null
+        try {
+            val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+            val projection = arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            )
+            val cursor = contentResolver.query(uri, projection, null, null, null)
+            cursor?.use {
+                val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (it.moveToNext()) {
+                    val contactName = it.getString(nameIndex) ?: ""
+                    // Very simple loose matching for offline Vosk transcription
+                    if (contactName.lowercase().contains(nameQuery.lowercase()) || nameQuery.lowercase().contains(contactName.lowercase().split(" ")[0])) {
+                        phoneNumber = it.getString(numberIndex)
+                        break
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read contacts: ${e.message}")
+        }
+        return phoneNumber
+    }
+
+    private fun parseSpokenNumber(text: String): String {
+        return text.replace("zero", "0")
+                   .replace("one", "1")
+                   .replace("two", "2")
+                   .replace("three", "3")
+                   .replace("four", "4")
+                   .replace("five", "5")
+                   .replace("six", "6")
+                   .replace("seven", "7")
+                   .replace("eight", "8")
+                   .replace("nine", "9")
+                   .replace("[^0-9]".toRegex(), "")
+    }
+
+    override fun onResult(hypothesis: String) {
+        val text = extractText(hypothesis)
+        if (text.isEmpty() || text == "[unk]" || isTransitioning) return
+        Log.d(TAG, "Result: \"$text\" (commandState=$isCommandState)")
+        
+        if (!isCommandState) {
+            // Backup wake word detection (in case partials missed it)
+            if (WAKE_WORDS.any { text.contains(it) }) {
+                Log.d(TAG, ">>> WAKE WORD via Result: \"$text\"")
+                enterCommandState()
+            }
+        } else {
+            if (!isWakeWordOnly(text)) handleCommandHypothesis(text)
+        }
+    }
+
+    override fun onFinalResult(hypothesis: String) {
+        val text = extractText(hypothesis)
+        if (text.isEmpty() || text == "[unk]" || isTransitioning) return
+        Log.d(TAG, "Final: \"$text\" (commandState=$isCommandState)")
+        
+        if (!isCommandState) {
+            // Backup wake word detection (in case partials missed it)
+            if (WAKE_WORDS.any { text.contains(it) }) {
+                Log.d(TAG, ">>> WAKE WORD via Final: \"$text\"")
+                enterCommandState()
+            }
+        } else {
+            if (!isWakeWordOnly(text)) handleCommandHypothesis(text)
+        }
+    }
+
+    override fun onError(exception: Exception) {
+        Log.e(TAG, "Vosk Error: ${exception.message}")
+        isCommandState = false
+        isTransitioning = false
+        commandTimeoutHandler.removeCallbacksAndMessages(null)
+        commandTimeoutHandler.postDelayed({ startListening() }, 2000)
+    }
+
+    override fun onTimeout() {
+        Log.d(TAG, "Vosk timeout — restarting listener")
+        isCommandState = false
+        isTransitioning = false
+        startListening()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        commandTimeoutHandler.removeCallbacksAndMessages(null)
+        speechService?.shutdown()
+        try {
+            wakeLock?.release()
+            Log.d(TAG, "WakeLock released")
+        } catch (e: Exception) {}
+    }
+}

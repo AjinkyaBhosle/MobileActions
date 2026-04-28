@@ -1,0 +1,16 @@
+﻿--------- beginning of main
+04-28 02:49:45.367 D/WakeWordService( 4306): WakeLock acquired ΓÇö CPU will stay active
+04-28 02:50:07.926 D/WakeWordService( 4306): Result: "mobile" (commandState=false)
+04-28 02:50:11.726 D/WakeWordService( 4306): >>> WAKE WORD DETECTED: "hey mobile"
+04-28 02:50:12.253 D/WakeWordService( 4306): Listening for: COMMAND
+04-28 02:50:12.253 D/WakeWordService( 4306): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:50:15.030 D/WakeWordService( 4306): Result: "flashlight on" (commandState=true)
+04-28 02:50:15.077 D/WakeWordService( 4306): >>> COMMAND EXECUTED: "flashlight on"
+04-28 02:50:16.863 D/WakeWordService( 4306): Listening for: WAKE WORD
+04-28 02:50:43.821 D/WakeWordService( 4306): >>> WAKE WORD DETECTED: "hey mobile"
+04-28 02:50:44.370 D/WakeWordService( 4306): Listening for: COMMAND
+04-28 02:50:44.370 D/WakeWordService( 4306): >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:50:49.764 D/WakeWordService( 4306): Result: "flashlight" (commandState=true)
+04-28 02:50:49.781 D/WakeWordService( 4306): >>> COMMAND EXECUTED: "flashlight"
+04-28 02:50:51.564 D/WakeWordService( 4306): Listening for: WAKE WORD
+04-28 02:51:57.524 D/WakeWordService( 4306): Result: "hi" (commandState=false)

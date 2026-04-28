@@ -1,0 +1,25 @@
+﻿--------- beginning of main
+04-28 02:37:42.312 22863 22863 D WakeWordService: Result: "hey" (commandState=false)
+04-28 02:37:45.878 22863 22863 D WakeWordService: >>> WAKE WORD DETECTED: "hey mobile"
+04-28 02:37:46.422 22863 22863 D WakeWordService: Listening for: COMMAND
+04-28 02:37:46.422 22863 22863 D WakeWordService: >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:37:46.422 22863 22863 D WakeWordService: Final: "hey mobile" (commandState=true)
+04-28 02:37:49.956 22863 22863 D WakeWordService: Result: "flashlight on" (commandState=true)
+04-28 02:37:49.989 22863 22863 D WakeWordService: >>> COMMAND EXECUTED: "flashlight on"
+04-28 02:37:51.795 22863 22863 D WakeWordService: Listening for: WAKE WORD
+04-28 02:37:59.353 22863 22863 D WakeWordService: Result: "mobile" (commandState=false)
+04-28 02:38:01.755 22863 22863 D WakeWordService: >>> WAKE WORD DETECTED: "hey mobile"
+04-28 02:38:02.274 22863 22863 D WakeWordService: Listening for: COMMAND
+04-28 02:38:02.274 22863 22863 D WakeWordService: >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:38:02.275 22863 22863 D WakeWordService: Final: "hey mobile" (commandState=true)
+04-28 02:38:07.646 22863 22863 D WakeWordService: Result: "off" (commandState=true)
+04-28 02:38:07.646 22863 22863 D WakeWordService: Unrecognized command: "off" ΓÇö returning to wake state silently
+04-28 02:38:08.950 22863 22863 D WakeWordService: Listening for: WAKE WORD
+04-28 02:38:11.704 22863 22863 D WakeWordService: Result: "mobile" (commandState=false)
+04-28 02:38:15.284 22863 22863 D WakeWordService: >>> WAKE WORD DETECTED: "hey mobile"
+04-28 02:38:15.815 22863 22863 D WakeWordService: Listening for: COMMAND
+04-28 02:38:15.815 22863 22863 D WakeWordService: >>> COMMAND MODE ACTIVE ΓÇö speak your command
+04-28 02:38:15.815 22863 22863 D WakeWordService: Final: "hey mobile" (commandState=true)
+04-28 02:38:18.327 22863 22863 D WakeWordService: Result: "flashlight off" (commandState=true)
+04-28 02:38:18.343 22863 22863 D WakeWordService: >>> COMMAND EXECUTED: "flashlight off"
+04-28 02:38:20.206 22863 22863 D WakeWordService: Listening for: WAKE WORD
