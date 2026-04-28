@@ -716,6 +716,41 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
       }
 
       // ── Share my location ──
+      case 'show_location': {
+        // Open Maps centered on user's current GPS coordinates (no sharing).
+        if (Platform.OS !== 'android' || !WakeWordModule?.getLocation) {
+          await Linking.openURL('https://www.google.com/maps?q=My+Location');
+          return { success: true, message: 'Maps opened', spoken: 'Opening maps' };
+        }
+        try {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            return { success: false, message: 'Location permission denied', spoken: 'Please grant location access' };
+          }
+          const loc: { lat: number; lng: number } = await WakeWordModule.getLocation();
+          // geo:lat,lng?z=16  opens native maps centered + zoomed on user.
+          const url = `geo:${loc.lat},${loc.lng}?q=${loc.lat},${loc.lng}(You)&z=16`;
+          try {
+            await Linking.openURL(url);
+          } catch {
+            await Linking.openURL(`https://www.google.com/maps?q=${loc.lat},${loc.lng}`);
+          }
+          speak('This is your current location');
+          return {
+            success: true,
+            message: `Location: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`,
+            spoken: 'This is your current location',
+          };
+        } catch (e: any) {
+          // Fallback to Maps "my location" view
+          await Linking.openURL('https://www.google.com/maps?q=My+Location');
+          return { success: false, message: 'GPS not ready — opening maps', spoken: 'Opening maps' };
+        }
+      }
+
+      // ── Share my location ──
       case 'share_location': {
         const recipient = (params.contact || '').toString();
         if (Platform.OS !== 'android' || !WakeWordModule?.getLocation) {

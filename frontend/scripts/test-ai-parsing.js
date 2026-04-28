@@ -53,6 +53,8 @@ const VALID_ACTIONS = new Set([
   'scroll_up', 'scroll_down', 'tap_label', 'type_text', 'read_screen',
   // JARVIS tier
   'daily_briefing', 'small_talk',
+  // location & real-time data
+  'show_location',
 ]);
 
 function callOpenAI(userText) {
@@ -229,6 +231,20 @@ const TESTS = [
     expect: ['open_app', 'tap_label', 'type_text', 'tap_label'],
     check: (a) => a[0].action === 'open_app' && a.filter(x => x.action === 'tap_label').length >= 2
               && a.find(x => x.action === 'type_text' && /5/.test(x.params.text)) },
+  // === Real-time data → web_search ===
+  { cmd: "what's today's gold rate", expect: ['web_search'],
+    check: (a) => /gold/i.test(a[0].params.query) },
+  { cmd: 'current bitcoin price', expect: ['web_search'],
+    check: (a) => /bitcoin/i.test(a[0].params.query) },
+  { cmd: 'match score india vs australia', expect: ['web_search'],
+    check: (a) => /india|australia|score/i.test(a[0].params.query) },
+  { cmd: "what's the weather like today", expect: ['web_search'],
+    check: (a) => /weather/i.test(a[0].params.query) },
+  { cmd: 'google something funny', expect: ['web_search'], check: () => true },
+  // === Location ===
+  { cmd: 'where am i show on map', expect: ['show_location'], check: () => true },
+  { cmd: 'open my location on map', expect: ['show_location'], check: () => true },
+  { cmd: 'show my current location', expect: ['show_location'], check: () => true },
 ];
 
 (async () => {
