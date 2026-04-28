@@ -1,18 +1,28 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// Read Firebase config from EXPO_PUBLIC_* env (see .env.example).
+// Firebase web apiKey is a public client identifier (not a secret), but we still
+// load it from env so it's not committed alongside the source.
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "vibe-4f8c6.firebaseapp.com",
-  projectId: "vibe-4f8c6",
-  storageBucket: "vibe-4f8c6.firebasestorage.app",
-  messagingSenderId: "569533089062",
-  appId: "1:569533089062:web:4a9cf111b04236aaf96de7"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '',
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ?? '',
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ?? '',
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '',
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? '',
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+if (!firebaseConfig.apiKey) {
+  console.warn(
+    '[Firebase] EXPO_PUBLIC_FIREBASE_API_KEY is empty. ' +
+    'Add it to frontend/.env (see .env.example) and rebuild.'
+  );
+}
+
+// Avoid "Firebase App named '[DEFAULT]' already exists" on Fast Refresh
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 

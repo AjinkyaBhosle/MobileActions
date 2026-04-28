@@ -1,6 +1,5 @@
 import notifee, { AndroidImportance } from '@notifee/react-native';
-import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
-import { loadSettings } from './storageService';
+import { NativeModules } from 'react-native';
 
 const { WakeWordModule } = NativeModules;
 

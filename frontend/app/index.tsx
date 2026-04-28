@@ -15,7 +15,6 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
-import { parseCommand, getMultiCommands } from '../src/services/commandParser';
 import { executeAction } from '../src/services/actionExecutor';
 import { COLORS } from '../src/constants/theme';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -165,23 +164,11 @@ export default function HomeScreen() {
       console.log('[STT] Detected lang:', supportedLangRef.current, 'pkg:', recognizerPkgRef.current);
     }).catch(console.warn);
 
-    const transcriptSub = DeviceEventEmitter.addListener('onTranscript', async (event) => {
-      const text = event.text;
-      console.log('[UI] Native Transcript Received:', text);
-      if (text) {
-        setTranscript(text);
-        setAppState('listening');
-        // Small delay to show the text before executing
-        setTimeout(async () => {
-          const parsed = parseCommand(text);
-          const result = await executeAction(parsed);
-          setResult(result.message);
-          setHistory(prev => [result.message, ...prev.slice(0, 49)]);
-          setAppState('idle');
-          setTranscript('');
-        }, 500);
-      }
-    });
+    // NOTE: The 'onTranscript' event is no longer emitted by the current
+    // native WakeWordService (it was part of the offline-Vosk-only flow that
+    // has been replaced by the Vosk wake-word + Google STT + OpenAI hybrid).
+    // The Google STT result handler below ('useSpeechRecognitionEvent("result")')
+    // is what actually drives processCommand() now.
 
     const commandSub = DeviceEventEmitter.addListener('onCommandHandled', () => {
        console.log('[UI] Native Command Handled. Resetting...');
@@ -194,7 +181,6 @@ export default function HomeScreen() {
     return () => {
       wakeSub.remove();
       commandSub.remove();
-      transcriptSub.remove();
     };
   }, []);
 
