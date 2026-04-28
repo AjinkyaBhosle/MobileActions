@@ -376,6 +376,17 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={14} color="#FFD60A" opacity={0.5} />
               </TouchableOpacity>
             )}
+            {/* Notification Access Banner — required for "read my notifications" */}
+            {Platform.OS === 'android' && (
+              <TouchableOpacity 
+                style={styles.batteryWarning}
+                onPress={() => IntentLauncher.startActivityAsync('android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS')}
+              >
+                <Ionicons name="notifications-outline" size={18} color="#FFD60A" />
+                <Text style={styles.batteryWarningText}>Grant Notification access to read alerts aloud</Text>
+                <Ionicons name="chevron-forward" size={14} color="#FFD60A" opacity={0.5} />
+              </TouchableOpacity>
+            )}
             {appState === 'idle' && !responseText && (
               <Animated.View entering={FadeIn.duration(400)} style={styles.titleSection}>
                 <Text style={styles.appTitle}>Mobile Action</Text>

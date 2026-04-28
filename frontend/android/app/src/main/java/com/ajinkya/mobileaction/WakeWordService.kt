@@ -243,6 +243,24 @@ class WakeWordService : Service(), RecognitionListener {
         speechService = null
         
         vibrate(100)
+
+        // Bring our MainActivity to the foreground so:
+        // 1) Locked screen wakes up (showWhenLocked + turnScreenOn flags)
+        // 2) Google STT (which needs an active Activity) can run
+        // 3) Subsequent intents (open app, set alarm, etc.) launch reliably
+        try {
+            val launchIntent = Intent(this, MainActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+            startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not bring MainActivity to front: ${e.message}")
+        }
+
         Log.d(TAG, ">>> HANDING OFF TO REACT NATIVE")
         // Use direct callback instead of sendBroadcast to avoid cross-process issues
         wakeCallback?.onWakeTriggered()

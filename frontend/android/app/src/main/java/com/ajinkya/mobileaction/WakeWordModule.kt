@@ -179,6 +179,87 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
         promise.resolve(true)
     }
 
+    /**
+     * Read the in-memory ring buffer of recent notifications captured by
+     * MobileActionNotificationListener. Throws if the user hasn't granted
+     * notification access — JS catches this and opens the settings page.
+     */
+    @ReactMethod
+    fun getRecentNotifications(promise: Promise) {
+        try {
+            if (!MobileActionNotificationListener.isEnabled(reactApplicationContext)) {
+                promise.reject("NO_PERMISSION", "Notification access not granted")
+                return
+            }
+            val arr = Arguments.createArray()
+            for (n in MobileActionNotificationListener.recent) {
+                val m = Arguments.createMap()
+                m.putString("packageName", n.packageName)
+                m.putString("appName", n.appName)
+                m.putString("title", n.title)
+                m.putString("text", n.text)
+                m.putDouble("time", n.time.toDouble())
+                arr.pushMap(m)
+            }
+            promise.resolve(arr)
+        } catch (e: Exception) {
+            promise.reject("READ_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun setMute(mute: Boolean, promise: Promise) {
+        try {
+            val am = reactApplicationContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            val direction = if (mute) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, direction, 0)
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_RING, direction, 0)
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_NOTIFICATION, direction, 0)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("MUTE_ERROR", e.message, e)
+        }
+    }
+
+    /**
+     * Fire a media-key broadcast that any active media app responds to
+     * (Spotify, YouTube Music, system music player, etc.).
+     */
+    @ReactMethod
+    fun mediaKey(key: String, promise: Promise) {
+        try {
+            val keyCode = when (key.uppercase()) {
+                "PLAY"     -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+                "PAUSE"    -> android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
+                "TOGGLE"   -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                "NEXT"     -> android.view.KeyEvent.KEYCODE_MEDIA_NEXT
+                "PREVIOUS" -> android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                "STOP"     -> android.view.KeyEvent.KEYCODE_MEDIA_STOP
+                else -> { promise.reject("BAD_KEY", "Unknown media key: $key"); return }
+            }
+            val am = reactApplicationContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
+            am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("MEDIA_KEY_ERROR", e.message, e)
+        }
+    }
+
+    /**
+     * Trigger the system screenshot via accessibility shortcut.
+     * Note: This requires the app to have an Accessibility Service to fully
+     * automate it. As a fallback we fire the global action from the bound
+     * accessibility hook when available; otherwise we just guide the user.
+     */
+    @ReactMethod
+    fun takeScreenshot(promise: Promise) {
+        // No system API exists for non-system apps to take screenshots without
+        // the user explicitly using the hardware key combo. We open Quick
+        // Settings as a hint.
+        promise.resolve(false)
+    }
+
     @ReactMethod
     fun addListener(eventName: String) {
         // Keep NativeEventEmitter happy

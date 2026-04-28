@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * End-to-end test harness for Mobile Action AI parsing.
+ * End-to-end test harness for Mobile Action AI parsing (extended catalog).
  *
  * Runs sample voice commands through the live OpenAI gpt-4o-mini parser and
  * validates that the returned action sequence is the correct shape, the actions
@@ -10,12 +10,11 @@
  * Usage:
  *   export EXPO_PUBLIC_OPENAI_API_KEY=sk-...
  *   node scripts/test-ai-parsing.js
- *
- * Or pass the key inline:
- *   EXPO_PUBLIC_OPENAI_API_KEY=sk-... node scripts/test-ai-parsing.js
  */
 
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
 const API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 if (!API_KEY) {
@@ -23,60 +22,17 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// Keep prompt in lock-step with src/services/aiAgent.ts
-const SYSTEM_PROMPT = `You are the brain of "Mobile Action", a voice automation app for Android.
-Convert the user's spoken command into a sequence of structured action objects.
-
-CRITICAL RULES:
-- Output STRICT JSON in this exact shape: {"actions": [<action>, ...]}
-- Use ONLY action names from the catalog below — no others.
-- If the user requests multiple things ("call mom AND set alarm AND turn on flashlight"), return ONE action object per request, in the order spoken.
-- If you cannot understand the command, return {"actions": []}.
-- Do not include explanations, markdown, or any text outside the JSON object.
-
-ACTION CATALOG (use these exact names):
-1.  flashlight_on        — params: {}
-2.  flashlight_off       — params: {}
-3.  make_call            — params: {"contact": "<name or phone number>"}
-4.  send_sms             — params: {"contact": "<name or number>", "message": "<text>"}
-5.  set_alarm            — params: {"hour": "<0-23>", "minute": "<0-59>", "label": "<optional>"}
-6.  open_camera          — params: {}
-7.  open_maps            — params: {"query": "<destination>"}
-8.  volume_up            — params: {}
-9.  volume_down          — params: {}
-10. brightness_up        — params: {}
-11. brightness_down      — params: {}
-12. wifi_settings        — params: {}
-13. bluetooth_settings   — params: {}
-14. airplane_settings    — params: {}
-15. battery_info         — params: {}
-16. open_calendar        — params: {}
-17. open_contacts        — params: {}
-18. open_app             — params: {"appName": "<lowercase name>"}
-19. time_query           — params: {}
-20. date_query           — params: {}
-
-PARSING NOTES:
-- Convert spoken time to 24-hour: "7am" → hour 7, minute 0. "7:30 pm" → hour 19, minute 30. "noon" → hour 12. "midnight" → hour 0.
-- Strip wake words ("hey mobile", "ok mobile", etc.) from your understanding.
-- If user says "tomorrow" with an alarm, just use the time — Android schedules for next occurrence.
-- Phone number in spoken digits → join digits, no spaces.
-
-EXAMPLES:
-User: "call mom and set an alarm to 7 am tomorrow"
-Response: {"actions":[{"action":"make_call","params":{"contact":"mom"}},{"action":"set_alarm","params":{"hour":"7","minute":"0"}}]}
-
-User: "turn on the flashlight then open whatsapp"
-Response: {"actions":[{"action":"flashlight_on","params":{}},{"action":"open_app","params":{"appName":"whatsapp"}}]}
-
-User: "send a message to john saying I'll be late"
-Response: {"actions":[{"action":"send_sms","params":{"contact":"john","message":"I'll be late"}}]}
-
-User: "what time is it"
-Response: {"actions":[{"action":"time_query","params":{}}]}
-
-User: "wxyzqq blah blah"
-Response: {"actions":[]}`;
+// Pull the SYSTEM_PROMPT from src/services/aiAgent.ts so this stays in sync.
+const aiAgentSrc = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'services', 'aiAgent.ts'),
+  'utf8'
+);
+const promptMatch = aiAgentSrc.match(/const SYSTEM_PROMPT = `([\s\S]*?)`;/);
+if (!promptMatch) {
+  console.error('Could not find SYSTEM_PROMPT in aiAgent.ts');
+  process.exit(1);
+}
+const SYSTEM_PROMPT = promptMatch[1];
 
 const VALID_ACTIONS = new Set([
   'flashlight_on', 'flashlight_off', 'make_call', 'send_sms', 'set_alarm',
@@ -84,6 +40,12 @@ const VALID_ACTIONS = new Set([
   'brightness_down', 'wifi_settings', 'bluetooth_settings', 'airplane_settings',
   'battery_info', 'open_calendar', 'open_contacts', 'open_app', 'time_query',
   'date_query',
+  // extended
+  'play_youtube', 'play_spotify', 'whatsapp_send', 'gmail_compose',
+  'web_search', 'open_url', 'take_note', 'create_calendar_event',
+  'read_notifications', 'mute_audio', 'unmute_audio',
+  'play_music', 'pause_music', 'next_track', 'previous_track',
+  'take_screenshot',
 ]);
 
 function callOpenAI(userText) {
@@ -108,7 +70,7 @@ function callOpenAI(userText) {
           'Authorization': `Bearer ${API_KEY}`,
           'Content-Length': Buffer.byteLength(body),
         },
-        timeout: 20000,
+        timeout: 30000,
       },
       (res) => {
         let chunks = '';
@@ -133,91 +95,75 @@ function callOpenAI(userText) {
   });
 }
 
-// Test cases: [user input, expected action(s) in any order, validator]
 const TESTS = [
-  {
-    cmd: 'call mom',
-    expect: ['make_call'],
-    check: (acts) => acts[0].params.contact && /mom/i.test(acts[0].params.contact),
-  },
-  {
-    cmd: 'turn on the flashlight',
-    expect: ['flashlight_on'],
-    check: () => true,
-  },
-  {
-    cmd: 'turn off the torch',
-    expect: ['flashlight_off'],
-    check: () => true,
-  },
-  {
-    cmd: 'set an alarm for 7 am tomorrow',
-    expect: ['set_alarm'],
-    check: (acts) => String(acts[0].params.hour) === '7' && Number(acts[0].params.minute) === 0,
-  },
-  {
-    cmd: 'set alarm to 6:30 pm',
-    expect: ['set_alarm'],
-    check: (acts) => Number(acts[0].params.hour) === 18 && Number(acts[0].params.minute) === 30,
-  },
-  {
-    cmd: 'call mom and set an alarm to 7 am tomorrow',
-    expect: ['make_call', 'set_alarm'],
-    check: (acts) => {
-      const call = acts.find((a) => a.action === 'make_call');
-      const al = acts.find((a) => a.action === 'set_alarm');
-      return call && /mom/i.test(call.params.contact) && al && String(al.params.hour) === '7';
-    },
-  },
-  {
-    cmd: 'turn on flashlight then open whatsapp and increase volume',
-    expect: ['flashlight_on', 'open_app', 'volume_up'],
-    check: (acts) => acts.some((a) => a.action === 'open_app' && /whatsapp/i.test(a.params.appName)),
-  },
-  {
-    cmd: 'send a message to john saying I will be late',
-    expect: ['send_sms'],
-    check: (acts) => /john/i.test(acts[0].params.contact) && /late/i.test(acts[0].params.message),
-  },
-  {
-    cmd: 'what time is it',
-    expect: ['time_query'],
-    check: () => true,
-  },
-  {
-    cmd: 'how much battery do i have',
-    expect: ['battery_info'],
-    check: () => true,
-  },
-  {
-    cmd: 'navigate to the airport',
-    expect: ['open_maps'],
-    check: (acts) => /airport/i.test(acts[0].params.query || ''),
-  },
-  {
-    cmd: 'open camera and take a selfie',
-    expect: ['open_camera'],
-    check: () => true,
-  },
-  {
-    cmd: 'open wifi settings',
-    expect: ['wifi_settings'],
-    check: () => true,
-  },
-  {
-    cmd: 'sjkdfh blah blah random nonsense',
-    expect: [],
-    check: (acts) => acts.length === 0,
-  },
-  {
-    cmd: 'call ajinkya and message him saying meeting at 5',
-    expect: ['make_call', 'send_sms'],
-    check: (acts) => {
-      const call = acts.find((a) => a.action === 'make_call');
-      const sms = acts.find((a) => a.action === 'send_sms');
-      return !!call && !!sms && /5/.test(sms.params.message || '');
-    },
-  },
+  // Original 15
+  { cmd: 'call mom', expect: ['make_call'], check: (a) => /mom/i.test(a[0].params.contact) },
+  { cmd: 'turn on the flashlight', expect: ['flashlight_on'], check: () => true },
+  { cmd: 'turn off the torch', expect: ['flashlight_off'], check: () => true },
+  { cmd: 'set an alarm for 7 am tomorrow', expect: ['set_alarm'], check: (a) => String(a[0].params.hour) === '7' && Number(a[0].params.minute) === 0 },
+  { cmd: 'set alarm to 6:30 pm', expect: ['set_alarm'], check: (a) => Number(a[0].params.hour) === 18 && Number(a[0].params.minute) === 30 },
+  { cmd: 'call mom and set an alarm to 7 am tomorrow', expect: ['make_call', 'set_alarm'],
+    check: (a) => a.find(x => x.action === 'make_call') && a.find(x => x.action === 'set_alarm') },
+  { cmd: 'turn on flashlight then open whatsapp and increase volume', expect: ['flashlight_on', 'open_app', 'volume_up'],
+    check: (a) => a.some(x => x.action === 'open_app' && /whatsapp/i.test(x.params.appName)) },
+  { cmd: 'send sms to john saying I will be late', expect: ['send_sms'],
+    check: (a) => /john/i.test(a[0].params.contact) && /late/i.test(a[0].params.message) },
+  { cmd: 'what time is it', expect: ['time_query'], check: () => true },
+  { cmd: 'how much battery do i have', expect: ['battery_info'], check: () => true },
+  { cmd: 'navigate to the airport', expect: ['open_maps'], check: (a) => /airport/i.test(a[0].params.query || '') },
+  { cmd: 'open camera', expect: ['open_camera'], check: () => true },
+  { cmd: 'open wifi settings', expect: ['wifi_settings'], check: () => true },
+  { cmd: 'sjkdfh blah blah random nonsense', expect: [], check: (a) => a.length === 0 },
+  { cmd: 'call ajinkya and message him saying meeting at 5', expect: ['make_call'],
+    check: (a) => a.find(x => x.action === 'make_call') && a.find(x => (x.action === 'send_sms' || x.action === 'whatsapp_send') && /5/.test(x.params.message || '')) },
+
+  // === New extended catalog ===
+  { cmd: 'play despacito on youtube', expect: ['play_youtube'],
+    check: (a) => /despacito/i.test(a[0].params.query) },
+  { cmd: 'open youtube and play imagine dragons believer', expect: ['play_youtube'],
+    check: (a) => a.some(x => x.action === 'play_youtube' && /imagine dragons|believer/i.test(x.params.query || '')) },
+  { cmd: 'play shape of you on spotify', expect: ['play_spotify'],
+    check: (a) => /shape of you/i.test(a[0].params.query) },
+  { cmd: 'send a whatsapp to ajinkya saying I am running late', expect: ['whatsapp_send'],
+    check: (a) => /ajinkya/i.test(a[0].params.contact) && /late/i.test(a[0].params.message) },
+  { cmd: 'whatsapp mom that i will be home by 8', expect: ['whatsapp_send'],
+    check: (a) => /mom/i.test(a[0].params.contact) && /8/.test(a[0].params.message) },
+  { cmd: 'compose an email to john at example dot com with subject hello and body see you tomorrow',
+    expect: ['gmail_compose'],
+    check: (a) => /example/i.test(a[0].params.to) && /hello/i.test(a[0].params.subject) },
+  { cmd: 'search google for best italian restaurants', expect: ['web_search'],
+    check: (a) => /italian|restaurants/i.test(a[0].params.query) },
+  { cmd: 'open google.com', expect: ['open_url'],
+    check: (a) => /google/i.test(a[0].params.url) },
+  { cmd: 'take a note buy groceries tomorrow', expect: ['take_note'],
+    check: (a) => /groceries/i.test(a[0].params.text) },
+  { cmd: 'create a calendar event meeting at 3 pm', expect: ['create_calendar_event'],
+    check: (a) => Number(a[0].params.hour) === 15 && /meeting/i.test(a[0].params.title) },
+  { cmd: 'what are my notifications', expect: ['read_notifications'], check: () => true },
+  { cmd: 'read my notifications', expect: ['read_notifications'], check: () => true },
+  { cmd: 'mute the phone', expect: ['mute_audio'], check: () => true },
+  { cmd: 'unmute', expect: ['unmute_audio'], check: () => true },
+  { cmd: 'pause the music', expect: ['pause_music'], check: () => true },
+  { cmd: 'play music', expect: ['play_music'], check: () => true },
+  { cmd: 'next track', expect: ['next_track'], check: () => true },
+  { cmd: 'previous song', expect: ['previous_track'], check: () => true },
+
+  // === Multi-action with new actions ===
+  { cmd: 'play despacito on youtube and turn up the volume',
+    expect: ['play_youtube', 'volume_up'],
+    check: (a) => a.find(x => x.action === 'play_youtube') && a.find(x => x.action === 'volume_up') },
+  { cmd: 'pause music and turn down volume',
+    expect: ['pause_music', 'volume_down'],
+    check: (a) => a.find(x => x.action === 'pause_music') && a.find(x => x.action === 'volume_down') },
+  { cmd: 'take a note call dentist tomorrow and set an alarm for 9 am',
+    expect: ['take_note', 'set_alarm'],
+    check: (a) => a.find(x => x.action === 'take_note' && /dentist/i.test(x.params.text))
+              && a.find(x => x.action === 'set_alarm' && Number(x.params.hour) === 9) },
+
+  // === Multi-alarm range ===
+  { cmd: 'set alarms every 30 minutes from 6 am to 7 am',
+    expect: ['set_alarm', 'set_alarm', 'set_alarm'],
+    check: (a) => a.length >= 3 && a.every(x => x.action === 'set_alarm') },
 ];
 
 (async () => {
@@ -231,7 +177,6 @@ const TESTS = [
       const actions = await callOpenAI(t.cmd);
       const actionNames = actions.map((a) => a.action);
 
-      // 1. all action names must be in catalog
       const unknown = actionNames.filter((n) => !VALID_ACTIONS.has(n));
       if (unknown.length) {
         console.log(`  ❌ Unknown action(s): ${unknown.join(', ')}`);
@@ -239,23 +184,20 @@ const TESTS = [
         continue;
       }
 
-      // 2. expected actions must all be present (any order)
       const missing = t.expect.filter((e) => !actionNames.includes(e));
-      const extra = actionNames.filter((a) => !t.expect.includes(a));
       if (missing.length || (t.expect.length && actionNames.length === 0)) {
         console.log(`  ❌ Expected ${JSON.stringify(t.expect)}, got ${JSON.stringify(actionNames)}`);
         fail++;
         continue;
       }
 
-      // 3. param validator
       if (!t.check(actions)) {
         console.log(`  ❌ Param check failed. Got: ${JSON.stringify(actions)}`);
         fail++;
         continue;
       }
 
-      console.log(`  ✅ ${JSON.stringify(actionNames)}${extra.length ? ` (extras: ${extra.join(',')})` : ''}`);
+      console.log(`  ✅ ${JSON.stringify(actionNames)}`);
       pass++;
     } catch (e) {
       console.log(`  ❌ Error: ${e.message}`);

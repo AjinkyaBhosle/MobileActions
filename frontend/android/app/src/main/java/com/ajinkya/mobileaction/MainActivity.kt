@@ -19,6 +19,20 @@ class MainActivity : ReactActivity() {
     setTheme(R.style.AppTheme);
     SplashScreenManager.registerOnActivity(this)
     super.onCreate(null)
+
+    // Allow the activity to be shown above the lock screen and turn the
+    // screen on when launched (so voice-triggered actions wake the device).
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(true)
+      setTurnScreenOn(true)
+    } else {
+      @Suppress("DEPRECATION")
+      window.addFlags(
+        android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+        android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+        android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+      )
+    }
   }
 
   /**
