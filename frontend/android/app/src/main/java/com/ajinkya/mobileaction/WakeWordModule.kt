@@ -113,6 +113,23 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
         reactApplicationContext.stopService(intent)
     }
 
+    /**
+     * Save OpenAI API key to SharedPreferences so the native pipeline
+     * (NativeCommandProcessor) can use it when the app is killed/swiped/locked.
+     * Called from JS once on app startup.
+     */
+    @ReactMethod
+    fun setOpenAIKey(apiKey: String) {
+        try {
+            val prefs = reactApplicationContext.getSharedPreferences(
+                "mobile_action_prefs", Context.MODE_PRIVATE
+            )
+            prefs.edit().putString("openai_api_key", apiKey).apply()
+        } catch (e: Exception) {
+            android.util.Log.e("WakeWordModule", "setOpenAIKey failed: ${e.message}")
+        }
+    }
+
     @ReactMethod
     fun setFlashlight(state: Boolean) {
         val intent = Intent(reactApplicationContext, WakeWordService::class.java)

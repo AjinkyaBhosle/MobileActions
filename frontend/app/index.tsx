@@ -109,6 +109,19 @@ export default function HomeScreen() {
     requestAllPermissions();
     loadHistory().then(setHistory);
     loadStats().then(setStats);
+
+    // Save OpenAI API key into native SharedPreferences so the background
+    // NativeCommandProcessor (Kotlin) can make OpenAI calls even when
+    // the app is swiped / locked / killed.
+    try {
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
+      if (apiKey && NativeModules?.WakeWordModule?.setOpenAIKey) {
+        NativeModules.WakeWordModule.setOpenAIKey(apiKey);
+        console.log('[Native] Saved OpenAI key to native prefs');
+      }
+    } catch (e) {
+      console.warn('[Native] setOpenAIKey failed:', e);
+    }
     
     loadSettings().then(settings => {
       if (settings.backgroundListening) {

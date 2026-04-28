@@ -85,6 +85,33 @@ class WakeWordService : Service(), RecognitionListener {
         acquireWakeLock()
         showNotification()
         initModel()
+        registerCommandHandledReceiver()
+    }
+
+    // Receiver so both the JS path (WakeWordModule.sendCommandHandled) and
+    // the native NativeCommandProcessor can tell the service "done, resume Vosk".
+    private val commandHandledReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d(TAG, "COMMAND_HANDLED received — resuming Vosk")
+            isCommandState = false
+            isTransitioning = false
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                startListening()
+            }, 500)
+        }
+    }
+
+    private fun registerCommandHandledReceiver() {
+        val filter = android.content.IntentFilter("com.ajinkya.mobileaction.COMMAND_HANDLED")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(commandHandledReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(commandHandledReceiver, filter)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register COMMAND_HANDLED receiver: ${e.message}")
+        }
     }
 
     /**
@@ -224,6 +251,37 @@ class WakeWordService : Service(), RecognitionListener {
 
     private var lastWakeTimestamp = 0L
 
+    // Native processor — handles the full pipeline when JS is dead (app swiped/locked)
+    private var nativeProcessor: NativeCommandProcessor? = null
+
+    private fun getNativeProcessor(): NativeCommandProcessor {
+        if (nativeProcessor == null) {
+            nativeProcessor = NativeCommandProcessor(applicationContext)
+        }
+        return nativeProcessor!!
+    }
+
+    /**
+     * Check if our own app has any visible activity. When the app is swiped away
+     * from recents OR the screen is locked for long enough, the process may still
+     * exist but no activity is in the foreground — in that case JS likely cannot
+     * respond reliably, so we route to the native pipeline.
+     */
+    private fun isAppInForeground(): Boolean {
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val processes = am.runningAppProcesses ?: return false
+            val myPkg = packageName
+            processes.any {
+                it.processName == myPkg &&
+                    it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "isAppInForeground check failed: ${e.message}")
+            false
+        }
+    }
+
     private fun enterCommandState() {
         if (isCommandState) return
         
@@ -237,38 +295,55 @@ class WakeWordService : Service(), RecognitionListener {
         isCommandState = true
         isTransitioning = true
         
-        // CRITICAL: Stop the old recognizer IMMEDIATELY to free the microphone
-        // so ExpoSpeechRecognition can take over in React Native
+        // CRITICAL: Stop Vosk IMMEDIATELY to free the mic so SpeechRecognizer can take over.
         speechService?.stop()
         speechService = null
         
         vibrate(100)
 
-        // Bring our MainActivity to the foreground so:
-        // 1) Locked screen wakes up (showWhenLocked + turnScreenOn flags)
-        // 2) Google STT (which needs an active Activity) can run
-        // 3) Subsequent intents (open app, set alarm, etc.) launch reliably
-        try {
-            val launchIntent = Intent(this, MainActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-            }
-            startActivity(launchIntent)
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not bring MainActivity to front: ${e.message}")
-        }
+        // Decide: is app in foreground (JS alive + visible)? If yes, use JS path (richer features).
+        // Otherwise (app swiped / phone locked / process killed) → use native pipeline.
+        val jsAlive = isAppInForeground()
+        Log.d(TAG, ">>> WAKE HANDOFF — foreground=$jsAlive")
 
-        Log.d(TAG, ">>> HANDING OFF TO REACT NATIVE")
-        // Use direct callback instead of sendBroadcast to avoid cross-process issues
-        wakeCallback?.onWakeTriggered()
-            ?: Log.w(TAG, "No wakeCallback registered! Broadcast fallback.")
-        
-        // We do NOT restart startListening() here!
-        // React Native will capture the command via Google STT, 
-        // then call WakeWordModule.startListening() to resume Vosk when done.
+        if (jsAlive) {
+            // JS path: launch MainActivity (so STT has an Activity context + lock-screen wake)
+            try {
+                val launchIntent = Intent(this, MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                }
+                startActivity(launchIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not bring MainActivity to front: ${e.message}")
+            }
+            wakeCallback?.onWakeTriggered()
+        } else {
+            // Native pipeline — no UI needed
+            Log.d(TAG, ">>> Routing to NativeCommandProcessor (background mode)")
+            try {
+                getNativeProcessor().startListeningAndProcess()
+                // Safety timeout — if nothing broadcasts COMMAND_HANDLED within 25s,
+                // force Vosk back on so we don't get stuck.
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (isCommandState) {
+                        Log.w(TAG, "Native pipeline timeout — forcing Vosk restart")
+                        sendBroadcast(Intent("com.ajinkya.mobileaction.COMMAND_HANDLED"))
+                    }
+                }, 25000)
+            } catch (e: Exception) {
+                Log.e(TAG, "Native processor failed: ${e.message}")
+                // Reset so next wake word works
+                isCommandState = false
+                isTransitioning = false
+                startListening()
+            }
+        }
+        // Note: startListening() will be re-invoked when JS sends onCommandHandled OR
+        // when NativeCommandProcessor broadcasts COMMAND_HANDLED — handled in onStartCommand
     }
 
     // handleCommandHypothesis removed — handled by React Native + OpenAI
@@ -390,6 +465,8 @@ class WakeWordService : Service(), RecognitionListener {
     override fun onDestroy() {
         super.onDestroy()
         speechService?.shutdown()
+        try { unregisterReceiver(commandHandledReceiver) } catch (_: Exception) {}
+        try { nativeProcessor?.shutdown() } catch (_: Exception) {}
         try {
             wakeLock?.release()
             Log.d(TAG, "WakeLock released")
