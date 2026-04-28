@@ -345,25 +345,22 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
         return { success: true, message: `Alarm set for ${hh}:${mm}`, spoken: `Setting alarm for ${hh}:${mm}` };
       }
 
-      // ── Open App ──
+      // ── Open App (works for ANY installed app: Excel, Word, PDF readers, SOS apps, banking apps, etc.) ──
       case 'open_app': {
-        const appName = (params.appName || '').toString();
-        const pkg = (params.packageName || '').toString();
+        const appName = (params.appName || params.name || params.query || '').toString().trim();
+        const pkg = (params.packageName || '').toString().trim();
 
         if (Platform.OS === 'android' && pkg) {
           try {
             await IntentLauncher.startActivityAsync('android.intent.action.MAIN', {
               packageName: pkg,
             });
-            speak(`Opening ${appName}`);
-            return { success: true, message: `${appName} opened`, spoken: `Opening ${appName}` };
-          } catch {
-            // Try Play Store as fallback
-            await Linking.openURL(`market://details?id=${pkg}`);
-          }
+            speak(`Opening ${appName || 'app'}`);
+            return { success: true, message: `${appName || pkg} opened`, spoken: `Opening ${appName || 'app'}` };
+          } catch { /* fall through */ }
         }
 
-        // Try common URL schemes
+        // Try common URL schemes first (faster than scanning installed apps)
         const schemes: Record<string, string> = {
           whatsapp: 'whatsapp://',
           youtube: 'vnd.youtube://',
@@ -371,6 +368,7 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
           twitter: 'twitter://',
           spotify: 'spotify://',
           telegram: 'tg://',
+          gmail: 'googlegmail://',
         };
         const scheme = schemes[appName.toLowerCase()];
         if (scheme) {
@@ -378,11 +376,23 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
             await Linking.openURL(scheme);
             speak(`Opening ${appName}`);
             return { success: true, message: `${appName} opened`, spoken: `Opening ${appName}` };
-          } catch { /* continue */ }
+          } catch { /* fall through to package lookup */ }
         }
 
-        speak(`Could not open ${appName}`);
-        return { success: false, message: `Cannot open ${appName}`, spoken: `Could not open ${appName}` };
+        // Generic: ask Kotlin to find ANY installed app whose label matches.
+        // This makes "open Excel", "open Word", "open my SOS app", "open Adobe Reader" all work.
+        if (Platform.OS === 'android' && WakeWordModule?.launchAppByName && appName) {
+          try {
+            const foundPkg: string | null = await WakeWordModule.launchAppByName(appName);
+            if (foundPkg) {
+              speak(`Opening ${appName}`);
+              return { success: true, message: `${appName} opened (${foundPkg})`, spoken: `Opening ${appName}` };
+            }
+          } catch (e) { console.warn('[open_app] launchAppByName error:', e); }
+        }
+
+        speak(`Could not find ${appName || 'that app'}`);
+        return { success: false, message: `App "${appName || pkg}" not installed or not launchable`, spoken: `Could not find ${appName}` };
       }
 
       // ── YouTube search & play ──

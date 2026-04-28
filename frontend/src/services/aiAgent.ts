@@ -49,7 +49,7 @@ ACTION CATALOG (use these exact names):
 15. battery_info               params: {}
 16. open_calendar              params: {}
 17. open_contacts              params: {}
-18. open_app                   params: {"appName": "<lowercase name>"}
+18. open_app                   params: {"appName": "<any installed app's display name, e.g. 'whatsapp', 'excel', 'word', 'pdf reader', 'adobe reader', 'my bank app', 'sos'>"}
 19. time_query                 params: {}
 20. date_query                 params: {}
 21. play_youtube               params: {"query": "<song or video>"}
@@ -91,7 +91,7 @@ ACTION CATALOG (use these exact names):
 
 PARSING NOTES:
 - 24-hour conversion: "7am" → 7:00, "7:30 pm" → 19:30, "noon" → 12:00, "midnight" → 0:00.
-- Strip wake words ("hey mobile", "hey jarvis", etc.) from your understanding.
+- Strip wake words ("hey mobile", "hi mobile", "ok mobile", "mobile", etc.) from your understanding.
 - Spoken digits → joined number ("two zero one" → "201").
 - For YouTube/Spotify, extract the song/artist into the query.
 - For WhatsApp/Gmail, extract recipient and message body separately.
@@ -184,6 +184,21 @@ Response: {"actions":[{"action":"read_screen","params":{}}]}
 
 User: "fetch the article from example.com/news and summarize it"
 Response: {"actions":[{"action":"web_fetch","params":{"url":"example.com/news"}}]}
+
+User: "open excel and tap cell A1 and type 100"
+Response: {"actions":[{"action":"open_app","params":{"appName":"excel"}},{"action":"tap_label","params":{"label":"A1"}},{"action":"type_text","params":{"text":"100"}}]}
+
+User: "open word and type my address is 123 main street"
+Response: {"actions":[{"action":"open_app","params":{"appName":"word"}},{"action":"type_text","params":{"text":"my address is 123 main street"}}]}
+
+User: "open the pdf and scroll down"
+Response: {"actions":[{"action":"open_app","params":{"appName":"pdf"}},{"action":"scroll_down","params":{}}]}
+
+User: "open my sos app and tap emergency"
+Response: {"actions":[{"action":"open_app","params":{"appName":"sos"}},{"action":"tap_label","params":{"label":"emergency"}}]}
+
+User: "open whatsapp tap mom type meeting at 5 and tap send"
+Response: {"actions":[{"action":"open_app","params":{"appName":"whatsapp"}},{"action":"tap_label","params":{"label":"mom"}},{"action":"type_text","params":{"text":"meeting at 5"}},{"action":"tap_label","params":{"label":"send"}}]}
 
 User: "good morning"
 Response: {"actions":[{"action":"daily_briefing","params":{}}]}

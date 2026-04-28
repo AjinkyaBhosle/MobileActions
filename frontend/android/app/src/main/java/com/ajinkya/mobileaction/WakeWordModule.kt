@@ -362,6 +362,52 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
         }
     }
 
+    /**
+     * Launch ANY installed app by its visible label (case-insensitive substring).
+     * Works for Excel, Word, PDF readers, banking apps, SOS apps, anything launchable.
+     * Returns the package name on success, or null if no match.
+     */
+    @ReactMethod
+    fun launchAppByName(query: String, promise: Promise) {
+        try {
+            val pm = reactApplicationContext.packageManager
+            val q = query.lowercase().trim()
+            val launchableApps = pm.getInstalledApplications(0)
+                .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+
+            // Score each app: exact label match = 100, starts-with = 50, contains = 10.
+            data class Hit(val score: Int, val pkg: String, val label: String)
+            val hits = launchableApps.mapNotNull { ai ->
+                val label = (pm.getApplicationLabel(ai)?.toString() ?: "").lowercase()
+                val score = when {
+                    label == q -> 100
+                    label.startsWith(q) -> 50
+                    label.split(' ').any { it.startsWith(q) } -> 30
+                    label.contains(q) -> 10
+                    ai.packageName.contains(q) -> 5
+                    else -> 0
+                }
+                if (score > 0) Hit(score, ai.packageName, label) else null
+            }.sortedByDescending { it.score }
+
+            val best = hits.firstOrNull()
+            if (best == null) {
+                promise.resolve(null)
+                return
+            }
+            val intent = pm.getLaunchIntentForPackage(best.pkg) ?: run {
+                promise.resolve(null); return
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactApplicationContext.startActivity(intent)
+            Log.d(TAG, "launchAppByName('$query') -> ${best.label} (${best.pkg})")
+            promise.resolve(best.pkg)
+        } catch (e: Exception) {
+            Log.e(TAG, "launchAppByName error: ${e.message}")
+            promise.reject("LAUNCH_ERR", e.message, e)
+        }
+    }
+
     @ReactMethod
     fun addListener(eventName: String) {
         // Keep NativeEventEmitter happy

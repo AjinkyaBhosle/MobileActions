@@ -206,7 +206,29 @@ const TESTS = [
   { cmd: 'give me a briefing', expect: ['daily_briefing'], check: () => true },
   { cmd: 'how are you', expect: ['small_talk'], check: () => true },
   { cmd: 'tell me a joke', expect: ['small_talk'], check: () => true },
-  { cmd: 'thanks jarvis', expect: ['small_talk'], check: () => true },
+  { cmd: 'thanks', expect: ['small_talk'], check: () => true },
+  // === Generic-app control via Accessibility (Excel / Word / PDF / SOS / etc) ===
+  { cmd: 'open excel and tap cell A1 and type 100',
+    expect: ['open_app', 'tap_label', 'type_text'],
+    check: (a) => a.find(x => x.action === 'open_app' && /excel/i.test(x.params.appName))
+              && a.find(x => x.action === 'tap_label' && /A1/i.test(x.params.label))
+              && a.find(x => x.action === 'type_text' && /100/.test(x.params.text)) },
+  { cmd: 'open word and type my address',
+    expect: ['open_app', 'type_text'],
+    check: (a) => a.find(x => x.action === 'open_app' && /word/i.test(x.params.appName))
+              && a.find(x => x.action === 'type_text') },
+  { cmd: 'open the pdf and scroll down',
+    expect: ['open_app', 'scroll_down'],
+    check: (a) => a.find(x => x.action === 'open_app' && /pdf/i.test(x.params.appName))
+              && a.find(x => x.action === 'scroll_down') },
+  { cmd: 'open my sos app and tap emergency',
+    expect: ['open_app', 'tap_label'],
+    check: (a) => a.find(x => x.action === 'open_app' && /sos/i.test(x.params.appName))
+              && a.find(x => x.action === 'tap_label' && /emergency/i.test(x.params.label)) },
+  { cmd: 'open whatsapp tap mom type meeting at 5 and tap send',
+    expect: ['open_app', 'tap_label', 'type_text', 'tap_label'],
+    check: (a) => a[0].action === 'open_app' && a.filter(x => x.action === 'tap_label').length >= 2
+              && a.find(x => x.action === 'type_text' && /5/.test(x.params.text)) },
 ];
 
 (async () => {
