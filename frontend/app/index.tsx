@@ -126,15 +126,12 @@ export default function HomeScreen() {
          setAppState('listening');
          setTranscript('Listening for command...');
 
-         // JARVIS acknowledgment — quick "Yes?" so user knows we heard them.
-         // Uses premium TTS if available, else system TTS.
+         // JARVIS acknowledgment — uses free system TTS (NOT premium OpenAI TTS)
+         // to save API cost. Premium TTS only fires for response text and only
+         // when user explicitly enables 'jarvis' persona in Settings.
          try {
-           const { speakPremium } = await import('../src/services/aiAgent');
-           const ok = await speakPremium('Yes, sir?', 'onyx');
-           if (!ok) {
-             const Speech = await import('expo-speech');
-             Speech.speak('Yes?', { rate: 1.1, pitch: 1.0 });
-           }
+           const Speech = await import('expo-speech');
+           Speech.speak('Yes?', { rate: 1.1, pitch: 1.0 });
          } catch { /* best effort */ }
 
          console.log('[STT] Starting with lang:', supportedLangRef.current, 'pkg:', recognizerPkgRef.current);

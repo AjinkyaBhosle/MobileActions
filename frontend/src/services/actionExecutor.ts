@@ -25,6 +25,15 @@ async function getPersona(): Promise<'jarvis' | 'neutral'> {
   if (_personaCache) return _personaCache;
   try {
     const { loadSettings } = await import('./storageService');
+    const s: any = await loadSettings();
+    // Default is 'neutral' (uses free system TTS). User must explicitly opt-in to
+    // 'jarvis' persona in settings to enable the paid OpenAI premium voice.
+    _personaCache = (s?.persona === 'jarvis') ? 'jarvis' : 'neutral';
+  } catch { _personaCache = 'neutral'; }
+  return _personaCache;
+}
+  try {
+    const { loadSettings } = await import('./storageService');
     const s = await loadSettings();
     _personaCache = (s?.persona === 'neutral') ? 'neutral' : 'jarvis';
   } catch { _personaCache = 'jarvis'; }
