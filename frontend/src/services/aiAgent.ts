@@ -61,6 +61,24 @@ ACTION CATALOG (use these exact names):
 34. next_track                 params: {}
 35. previous_track             params: {}
 36. take_screenshot            params: {}
+37. translate                  params: {"text": "<text>", "target": "<language e.g. Spanish, Hindi>"}
+38. web_fetch                  params: {"url": "<URL to fetch and summarize>"}
+39. latest_news                params: {"topic": "<news topic, e.g. tech, sports, world>"}
+40. find_route                 params: {"destination": "<place>", "origin": "<optional>", "mode": "driving|walking|bicycling|transit"}
+41. share_location             params: {"contact": "<optional name or number>"}
+42. vibrate                    params: {"duration": "<ms, default 500>"}
+43. set_brightness             params: {"level": "<0-100>"}
+44. camera_front               params: {}
+45. camera_back                params: {}
+46. lock_screen                params: {}
+47. go_back                    params: {}
+48. go_home                    params: {}
+49. show_recents               params: {}
+50. scroll_up                  params: {}
+51. scroll_down                params: {}
+52. tap_label                  params: {"label": "<visible text on a button or link>"}
+53. type_text                  params: {"text": "<text to type into focused field>"}
+54. read_screen                params: {}
 
 PARSING NOTES:
 - 24-hour conversion: "7am" → 7:00, "7:30 pm" → 19:30, "noon" → 12:00, "midnight" → 0:00.
@@ -98,6 +116,57 @@ Response: {"actions":[{"action":"set_alarm","params":{"hour":"6","minute":"0"}},
 
 User: "pause the music and turn down the volume"
 Response: {"actions":[{"action":"pause_music","params":{}},{"action":"volume_down","params":{}}]}
+
+User: "translate good morning to spanish"
+Response: {"actions":[{"action":"translate","params":{"text":"good morning","target":"Spanish"}}]}
+
+User: "what is the latest news on technology"
+Response: {"actions":[{"action":"latest_news","params":{"topic":"technology"}}]}
+
+User: "navigate to mumbai airport by car"
+Response: {"actions":[{"action":"find_route","params":{"destination":"mumbai airport","mode":"driving"}}]}
+
+User: "find fastest walking route to central park"
+Response: {"actions":[{"action":"find_route","params":{"destination":"central park","mode":"walking"}}]}
+
+User: "share my location with mom"
+Response: {"actions":[{"action":"share_location","params":{"contact":"mom"}}]}
+
+User: "turn on front camera"
+Response: {"actions":[{"action":"camera_front","params":{}}]}
+
+User: "open the back camera"
+Response: {"actions":[{"action":"camera_back","params":{}}]}
+
+User: "set brightness to 80 percent"
+Response: {"actions":[{"action":"set_brightness","params":{"level":"80"}}]}
+
+User: "vibrate the phone"
+Response: {"actions":[{"action":"vibrate","params":{"duration":"800"}}]}
+
+User: "lock the phone"
+Response: {"actions":[{"action":"lock_screen","params":{}}]}
+
+User: "go back"
+Response: {"actions":[{"action":"go_back","params":{}}]}
+
+User: "go to home screen"
+Response: {"actions":[{"action":"go_home","params":{}}]}
+
+User: "scroll down"
+Response: {"actions":[{"action":"scroll_down","params":{}}]}
+
+User: "tap the login button"
+Response: {"actions":[{"action":"tap_label","params":{"label":"login"}}]}
+
+User: "type my email address"
+Response: {"actions":[{"action":"type_text","params":{"text":"my email address"}}]}
+
+User: "read whats on screen"
+Response: {"actions":[{"action":"read_screen","params":{}}]}
+
+User: "fetch the article from example.com/news and summarize it"
+Response: {"actions":[{"action":"web_fetch","params":{"url":"example.com/news"}}]}
 
 User: "wxyzqq blah blah"
 Response: {"actions":[]}`;
@@ -147,3 +216,48 @@ export const processCommandWithAI = async (commandText: string): Promise<AIActio
     throw error;
   }
 };
+
+// ─── Helper: free-form OpenAI calls (translation, summary, news) ───────────
+
+async function chat(systemPrompt: string, userPrompt: string, opts: { json?: boolean } = {}): Promise<string> {
+  if (!OPENAI_API_KEY) throw new Error('Missing OpenAI API Key');
+  const response = await axios.post(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.2,
+      ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
+    },
+    {
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      timeout: 20000,
+    }
+  );
+  return (response.data.choices[0].message.content || '').trim();
+}
+
+export async function translateWithAI(text: string, target: string): Promise<string> {
+  return chat(
+    `You are a translator. Translate the user's text to ${target}. Return ONLY the translation, no quotes, no explanation.`,
+    text
+  );
+}
+
+export async function summarizeWithAI(text: string): Promise<string> {
+  return chat(
+    'Summarize the user\'s text in 2-3 short spoken sentences. Use plain language, no markdown.',
+    text.length > 6000 ? text.slice(0, 6000) : text
+  );
+}
+
+export async function newsBriefingWithAI(topic: string): Promise<string> {
+  return chat(
+    'You are a news briefer. Give a 3-sentence verbal summary of likely current top headlines on the requested topic. ' +
+    'Use phrases like "in recent news" or "lately" — do not invent specific dates or breaking events. End by suggesting the user open a news app for full details.',
+    `Topic: ${topic}`
+  );
+}

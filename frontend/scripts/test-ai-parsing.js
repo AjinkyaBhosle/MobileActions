@@ -46,6 +46,11 @@ const VALID_ACTIONS = new Set([
   'read_notifications', 'mute_audio', 'unmute_audio',
   'play_music', 'pause_music', 'next_track', 'previous_track',
   'take_screenshot',
+  // newest batch
+  'translate', 'web_fetch', 'latest_news', 'find_route', 'navigate_route',
+  'share_location', 'vibrate', 'set_brightness', 'camera_front', 'camera_back',
+  'lock_screen', 'go_back', 'go_home', 'show_recents',
+  'scroll_up', 'scroll_down', 'tap_label', 'type_text', 'read_screen',
 ]);
 
 function callOpenAI(userText) {
@@ -110,7 +115,8 @@ const TESTS = [
     check: (a) => /john/i.test(a[0].params.contact) && /late/i.test(a[0].params.message) },
   { cmd: 'what time is it', expect: ['time_query'], check: () => true },
   { cmd: 'how much battery do i have', expect: ['battery_info'], check: () => true },
-  { cmd: 'navigate to the airport', expect: ['open_maps'], check: (a) => /airport/i.test(a[0].params.query || '') },
+  { cmd: 'navigate to the airport', expect: ['find_route'],
+    check: (a) => /airport/i.test(a[0].params.destination || a[0].params.query || '') },
   { cmd: 'open camera', expect: ['open_camera'], check: () => true },
   { cmd: 'open wifi settings', expect: ['wifi_settings'], check: () => true },
   { cmd: 'sjkdfh blah blah random nonsense', expect: [], check: (a) => a.length === 0 },
@@ -164,6 +170,35 @@ const TESTS = [
   { cmd: 'set alarms every 30 minutes from 6 am to 7 am',
     expect: ['set_alarm', 'set_alarm', 'set_alarm'],
     check: (a) => a.length >= 3 && a.every(x => x.action === 'set_alarm') },
+
+  // === Newest batch (translate / fetch / news / route / location / hardware / accessibility) ===
+  { cmd: 'translate good morning to spanish', expect: ['translate'],
+    check: (a) => /good morning/i.test(a[0].params.text) && /spanish/i.test(a[0].params.target) },
+  { cmd: 'translate I am hungry to hindi', expect: ['translate'],
+    check: (a) => /hungry/i.test(a[0].params.text) && /hindi/i.test(a[0].params.target) },
+  { cmd: 'what is the latest news on technology', expect: ['latest_news'],
+    check: (a) => /tech/i.test(a[0].params.topic) },
+  { cmd: 'fetch the article from example.com slash news', expect: ['web_fetch'],
+    check: (a) => /example/i.test(a[0].params.url) },
+  { cmd: 'navigate to mumbai airport by car', expect: ['find_route'],
+    check: (a) => /mumbai/i.test(a[0].params.destination) && /driv/i.test(a[0].params.mode) },
+  { cmd: 'find fastest walking route to central park', expect: ['find_route'],
+    check: (a) => /central park/i.test(a[0].params.destination) && /walk/i.test(a[0].params.mode) },
+  { cmd: 'share my location with mom', expect: ['share_location'],
+    check: (a) => /mom/i.test(a[0].params.contact) },
+  { cmd: 'turn on front camera', expect: ['camera_front'], check: () => true },
+  { cmd: 'open back camera', expect: ['camera_back'], check: () => true },
+  { cmd: 'set brightness to 80 percent', expect: ['set_brightness'],
+    check: (a) => Number(a[0].params.level) === 80 },
+  { cmd: 'vibrate the phone', expect: ['vibrate'], check: () => true },
+  { cmd: 'lock the phone', expect: ['lock_screen'], check: () => true },
+  { cmd: 'go back', expect: ['go_back'], check: () => true },
+  { cmd: 'go to home screen', expect: ['go_home'], check: () => true },
+  { cmd: 'scroll down', expect: ['scroll_down'], check: () => true },
+  { cmd: 'scroll up', expect: ['scroll_up'], check: () => true },
+  { cmd: 'tap the login button', expect: ['tap_label'],
+    check: (a) => /login/i.test(a[0].params.label) },
+  { cmd: 'read whats on screen', expect: ['read_screen'], check: () => true },
 ];
 
 (async () => {

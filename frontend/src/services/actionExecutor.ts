@@ -605,13 +605,234 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
         return { success: true, message: `Media: ${key.toLowerCase()}`, spoken: action.replace('_', ' ') };
       }
 
-      // ── Take screenshot (system shortcut, requires Android 9+) ──
+      // ── Take screenshot (via accessibility service if enabled) ──
       case 'take_screenshot': {
         if (Platform.OS === 'android' && WakeWordModule?.takeScreenshot) {
-          try { await WakeWordModule.takeScreenshot(); } catch (e) { console.warn(e); }
+          try {
+            const ok = await WakeWordModule.takeScreenshot();
+            if (ok) {
+              speak('Screenshot taken');
+              return { success: true, message: 'Screenshot', spoken: 'Screenshot taken' };
+            }
+          } catch (e) { console.warn(e); }
         }
-        speak('Screenshot taken');
-        return { success: true, message: 'Screenshot', spoken: 'Screenshot taken' };
+        speak('Screenshot requires accessibility access');
+        return { success: false, message: 'Enable accessibility for screenshots', spoken: 'Please enable accessibility access' };
+      }
+
+      // ── Translate via OpenAI (no extra API needed) ──
+      case 'translate': {
+        const text = (params.text || '').toString().trim();
+        const target = (params.target || params.language || 'English').toString();
+        if (!text) return { success: false, message: 'Nothing to translate', spoken: 'What should I translate?' };
+        try {
+          const { translateWithAI } = await import('./aiAgent');
+          const result = await translateWithAI(text, target);
+          speak(result);
+          return { success: true, message: `${target}: ${result}`, spoken: result };
+        } catch (e: any) {
+          return { success: false, message: 'Translation failed', spoken: 'Translation failed' };
+        }
+      }
+
+      // ── Web fetch + summarize ──
+      case 'web_fetch': {
+        const url = (params.url || '').toString().trim();
+        if (!url) return { success: false, message: 'No URL', spoken: 'No URL given' };
+        try {
+          const { default: axios } = await import('axios');
+          const r = await axios.get(/^https?:/.test(url) ? url : `https://${url}`, { timeout: 8000 });
+          const stripped = String(r.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 6000);
+          const { summarizeWithAI } = await import('./aiAgent');
+          const summary = await summarizeWithAI(stripped);
+          speak(summary);
+          return { success: true, message: summary, spoken: summary };
+        } catch (e: any) {
+          return { success: false, message: `Fetch failed: ${e?.message}`, spoken: 'Could not fetch that page' };
+        }
+      }
+
+      // ── Latest news (web search + AI summary) ──
+      case 'latest_news': {
+        const topic = (params.topic || params.category || 'top headlines').toString();
+        try {
+          const { newsBriefingWithAI } = await import('./aiAgent');
+          const briefing = await newsBriefingWithAI(topic);
+          speak(briefing);
+          return { success: true, message: briefing, spoken: briefing };
+        } catch (e: any) {
+          await Linking.openURL(`https://news.google.com/search?q=${encodeURIComponent(topic)}`);
+          speak(`Opening news for ${topic}`);
+          return { success: true, message: `News: ${topic}`, spoken: `Opening news` };
+        }
+      }
+
+      // ── Find route / fastest route ──
+      case 'find_route':
+      case 'navigate_route': {
+        const destination = (params.destination || params.to || params.query || '').toString();
+        const origin = (params.origin || params.from || '').toString();
+        const mode = ((params.mode || 'driving').toString().toLowerCase()); // driving | walking | bicycling | transit
+        if (!destination) return { success: false, message: 'Where to?', spoken: 'Where should I navigate?' };
+        const params2 = new URLSearchParams({
+          api: '1',
+          destination,
+          travelmode: mode,
+          dir_action: 'navigate',
+        });
+        if (origin) params2.set('origin', origin);
+        const url = `https://www.google.com/maps/dir/?${params2.toString()}`;
+        await Linking.openURL(url);
+        speak(`Navigating to ${destination}`);
+        return { success: true, message: `Navigate (${mode}) to ${destination}`, spoken: `Navigating to ${destination}` };
+      }
+
+      // ── Share my location ──
+      case 'share_location': {
+        const recipient = (params.contact || '').toString();
+        if (Platform.OS !== 'android' || !WakeWordModule?.getLocation) {
+          return { success: false, message: 'Location not supported', spoken: 'Cannot get location on this device' };
+        }
+        try {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            return { success: false, message: 'Location permission denied', spoken: 'Please grant location access' };
+          }
+          const loc: { lat: number; lng: number } = await WakeWordModule.getLocation();
+          const mapsLink = `https://maps.google.com/?q=${loc.lat},${loc.lng}`;
+          if (recipient) {
+            // Send via SMS or WhatsApp deep link
+            let number = recipient.replace(/[\s\-()]/g, '');
+            if (!/^[\+]?\d+$/.test(number) && WakeWordModule?.lookupContact) {
+              const found: string | null = await WakeWordModule.lookupContact(recipient).catch(() => null);
+              if (found) number = found;
+            }
+            if (/^[\+]?\d+$/.test(number)) {
+              await Linking.openURL(`sms:${number}?body=${encodeURIComponent('My location: ' + mapsLink)}`);
+            } else {
+              await Linking.openURL(`https://wa.me/?text=${encodeURIComponent('My location: ' + mapsLink)}`);
+            }
+            speak(`Sharing location with ${recipient}`);
+            return { success: true, message: `Location → ${recipient}: ${mapsLink}`, spoken: `Sharing location with ${recipient}` };
+          }
+          // No recipient — open share sheet
+          await Linking.openURL(`https://wa.me/?text=${encodeURIComponent('My location: ' + mapsLink)}`);
+          return { success: true, message: `Location: ${mapsLink}`, spoken: 'Sharing location' };
+        } catch (e: any) {
+          return { success: false, message: `Location error: ${e?.message || e?.code}`, spoken: 'Could not get location' };
+        }
+      }
+
+      // ── Hardware: vibrate ──
+      case 'vibrate': {
+        const ms = parseInt((params.duration || '500').toString(), 10);
+        if (Platform.OS === 'android' && WakeWordModule?.vibrateDevice) {
+          try { await WakeWordModule.vibrateDevice(ms); } catch (e) { console.warn(e); }
+        }
+        return { success: true, message: 'Vibrated', spoken: 'Vibrating' };
+      }
+
+      // ── Hardware: set brightness to specific level ──
+      case 'set_brightness': {
+        let level = parseFloat((params.level || params.value || '50').toString());
+        if (level > 1) level = level / 100; // accept 0-100 or 0-1
+        level = Math.max(0, Math.min(1, level));
+        try {
+          await Brightness.setBrightnessAsync(level);
+        } catch (e) { console.warn(e); }
+        speak(`Brightness ${Math.round(level * 100)}%`);
+        return { success: true, message: `Brightness: ${Math.round(level * 100)}%`, spoken: `Brightness ${Math.round(level * 100)} percent` };
+      }
+
+      // ── Camera with specific lens ──
+      case 'camera_front':
+      case 'camera_back': {
+        const useFront = action === 'camera_front';
+        if (Platform.OS === 'android') {
+          await IntentLauncher.startActivityAsync('android.media.action.STILL_IMAGE_CAMERA', {
+            extra: { 'android.intent.extras.CAMERA_FACING': useFront ? 1 : 0, 'android.intent.extras.USE_FRONT_CAMERA': useFront },
+          });
+        }
+        speak(useFront ? 'Front camera' : 'Back camera');
+        return { success: true, message: useFront ? 'Front camera' : 'Back camera', spoken: useFront ? 'Opening front camera' : 'Opening back camera' };
+      }
+
+      // ── Lock screen / phone (via accessibility) ──
+      case 'lock_screen': {
+        if (Platform.OS === 'android' && WakeWordModule?.accGlobalAction) {
+          try {
+            const ok = await WakeWordModule.accGlobalAction('LOCK_SCREEN');
+            if (ok) { speak('Locking'); return { success: true, message: 'Locked', spoken: 'Locking' }; }
+          } catch (e) { console.warn(e); }
+        }
+        return { success: false, message: 'Enable accessibility to lock screen', spoken: 'Please enable accessibility access' };
+      }
+
+      // ── Accessibility-driven UI control ──
+      case 'go_back': {
+        try { await WakeWordModule.accGlobalAction('BACK'); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        return { success: true, message: 'Back', spoken: 'Going back' };
+      }
+      case 'go_home': {
+        try { await WakeWordModule.accGlobalAction('HOME'); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        return { success: true, message: 'Home', spoken: 'Going home' };
+      }
+      case 'show_recents': {
+        try { await WakeWordModule.accGlobalAction('RECENTS'); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        return { success: true, message: 'Recents', spoken: 'Showing recents' };
+      }
+      case 'scroll_up':
+      case 'scroll_down': {
+        const dir = action === 'scroll_up' ? 'up' : 'down';
+        try { await WakeWordModule.accScroll(dir); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        return { success: true, message: `Scrolled ${dir}`, spoken: `Scrolling ${dir}` };
+      }
+      case 'tap_label': {
+        const label = (params.label || params.text || '').toString();
+        if (!label) return { success: false, message: 'No label', spoken: 'Tap what?' };
+        try {
+          const ok = await WakeWordModule.accClickLabel(label);
+          if (ok) { speak(`Tapped ${label}`); return { success: true, message: `Tapped: ${label}`, spoken: `Tapped ${label}` }; }
+        } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        return { success: false, message: `No "${label}" on screen`, spoken: `Could not find ${label}` };
+      }
+      case 'type_text': {
+        const text = (params.text || '').toString();
+        if (!text) return { success: false, message: 'Nothing to type', spoken: 'Type what?' };
+        try {
+          const ok = await WakeWordModule.accTypeText(text);
+          if (ok) { speak('Typed'); return { success: true, message: `Typed: ${text}`, spoken: 'Typed' }; }
+        } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        return { success: false, message: 'No text field focused', spoken: 'Tap a text field first' };
+      }
+      case 'read_screen': {
+        try {
+          const screenText: string = await WakeWordModule.accReadScreen();
+          if (!screenText) {
+            speak('Screen is empty');
+            return { success: true, message: '(empty)', spoken: 'Screen is empty' };
+          }
+          const { summarizeWithAI } = await import('./aiAgent');
+          const summary = await summarizeWithAI(screenText);
+          speak(summary);
+          return { success: true, message: summary, spoken: summary };
+        } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
       }
 
       // ── Unknown ──

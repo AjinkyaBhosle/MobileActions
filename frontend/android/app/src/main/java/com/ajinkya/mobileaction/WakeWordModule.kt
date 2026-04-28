@@ -1,5 +1,6 @@
 package com.ajinkya.mobileaction
 
+import android.annotation.SuppressLint
 import android.content.*
 import android.os.IBinder
 import android.os.Build
@@ -254,10 +255,111 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
      */
     @ReactMethod
     fun takeScreenshot(promise: Promise) {
-        // No system API exists for non-system apps to take screenshots without
-        // the user explicitly using the hardware key combo. We open Quick
-        // Settings as a hint.
+        // Use accessibility service if available (Android 9+)
+        val svc = AppControlAccessibilityService.get()
+        if (svc != null) {
+            promise.resolve(svc.globalAction("TAKE_SCREENSHOT"))
+            return
+        }
         promise.resolve(false)
+    }
+
+    // ── Accessibility-driven UI actions ────────────────────────────────────
+
+    private fun requireAccessibility(promise: Promise): AppControlAccessibilityService? {
+        val svc = AppControlAccessibilityService.get()
+        if (svc == null) {
+            promise.reject("NO_ACCESSIBILITY", "Accessibility service is not enabled. Open Settings > Accessibility > Mobile Action UI Control.")
+            return null
+        }
+        return svc
+    }
+
+    @ReactMethod
+    fun accClickLabel(label: String, promise: Promise) {
+        val svc = requireAccessibility(promise) ?: return
+        promise.resolve(svc.clickByLabel(label))
+    }
+
+    @ReactMethod
+    fun accTypeText(text: String, promise: Promise) {
+        val svc = requireAccessibility(promise) ?: return
+        promise.resolve(svc.typeText(text))
+    }
+
+    @ReactMethod
+    fun accScroll(direction: String, promise: Promise) {
+        val svc = requireAccessibility(promise) ?: return
+        promise.resolve(svc.scroll(direction))
+    }
+
+    @ReactMethod
+    fun accGlobalAction(action: String, promise: Promise) {
+        val svc = requireAccessibility(promise) ?: return
+        promise.resolve(svc.globalAction(action))
+    }
+
+    @ReactMethod
+    fun accReadScreen(promise: Promise) {
+        val svc = requireAccessibility(promise) ?: return
+        promise.resolve(svc.readVisibleText())
+    }
+
+    @ReactMethod
+    fun isAccessibilityEnabled(promise: Promise) {
+        promise.resolve(AppControlAccessibilityService.get() != null)
+    }
+
+    // ── Location ───────────────────────────────────────────────────────────
+
+    @ReactMethod
+    fun getLocation(promise: Promise) {
+        try {
+            val ctx = reactApplicationContext
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    ctx, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                promise.reject("NO_PERMISSION", "Location permission not granted")
+                return
+            }
+            val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            val providers = lm.getProviders(true)
+            var best: android.location.Location? = null
+            for (p in providers) {
+                @SuppressLint("MissingPermission")
+                val loc = lm.getLastKnownLocation(p) ?: continue
+                if (best == null || loc.accuracy < best!!.accuracy) best = loc
+            }
+            if (best == null) {
+                promise.reject("NO_FIX", "No location fix available — open Maps once to acquire GPS")
+                return
+            }
+            val map = Arguments.createMap()
+            map.putDouble("lat", best!!.latitude)
+            map.putDouble("lng", best!!.longitude)
+            map.putDouble("accuracy", best!!.accuracy.toDouble())
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("LOC_ERROR", e.message, e)
+        }
+    }
+
+    // ── Hardware ───────────────────────────────────────────────────────────
+
+    @ReactMethod
+    fun vibrateDevice(durationMs: Int, promise: Promise) {
+        try {
+            val v = reactApplicationContext.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(android.os.VibrationEffect.createOneShot(durationMs.toLong(), android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                v.vibrate(durationMs.toLong())
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("VIBRATE_ERR", e.message, e)
+        }
     }
 
     @ReactMethod
