@@ -18,13 +18,31 @@ export interface ActionResult {
   actionSignal?: 'FLASHLIGHT_ON' | 'FLASHLIGHT_OFF';
 }
 
-// Text-to-speech feedback
-function speak(text: string) {
-  Speech.speak(text, {
-    language: 'en-US',
-    rate: 1.0,
-    pitch: 1.0,
-  });
+// Text-to-speech feedback. Tries premium OpenAI voice ("onyx" — JARVIS-like)
+// first, falls back to system TTS if it fails or libs unavailable.
+let _personaCache: 'jarvis' | 'neutral' | null = null;
+async function getPersona(): Promise<'jarvis' | 'neutral'> {
+  if (_personaCache) return _personaCache;
+  try {
+    const { loadSettings } = await import('./storageService');
+    const s = await loadSettings();
+    _personaCache = (s?.persona === 'neutral') ? 'neutral' : 'jarvis';
+  } catch { _personaCache = 'jarvis'; }
+  return _personaCache;
+}
+
+async function speak(text: string) {
+  if (!text) return;
+  try {
+    const { speakPremium } = await import('./aiAgent');
+    const persona = await getPersona();
+    // Premium TTS only for JARVIS persona to save API cost; fall through to system.
+    if (persona === 'jarvis') {
+      const ok = await speakPremium(text, 'onyx');
+      if (ok) return;
+    }
+  } catch { /* fall through */ }
+  Speech.speak(text, { language: 'en-US', rate: 1.0, pitch: 1.0 });
 }
 
 export async function executeAction(command: ParsedCommand): Promise<ActionResult> {
@@ -832,6 +850,64 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
           return { success: true, message: summary, spoken: summary };
         } catch (e: any) {
           return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+      }
+
+      // ── JARVIS daily briefing ──
+      case 'daily_briefing': {
+        const facts: string[] = [];
+        const now = new Date();
+        const hour = now.getHours();
+        const tod = hour < 5 ? 'late night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+        facts.push(`time: ${now.toLocaleTimeString()} (${tod})`);
+        facts.push(`date: ${now.toDateString()}`);
+        try {
+          const level = await Battery.getBatteryLevelAsync();
+          const charging = (await Battery.getBatteryStateAsync()) === Battery.BatteryState.CHARGING;
+          facts.push(`battery: ${Math.round(level * 100)}%${charging ? ' (charging)' : ''}`);
+        } catch {}
+        try {
+          if (Platform.OS === 'android' && WakeWordModule?.getRecentNotifications) {
+            const list: any[] = await WakeWordModule.getRecentNotifications();
+            if (list?.length) {
+              const apps = [...new Set(list.slice(0, 8).map(n => n.appName))].join(', ');
+              facts.push(`unread notifications: ${list.length} (from ${apps})`);
+            } else {
+              facts.push('unread notifications: none');
+            }
+          }
+        } catch {}
+        try {
+          const { loadHistory } = await import('./storageService');
+          const hist = await loadHistory();
+          if (hist?.length) facts.push(`last command: "${hist[0].command}"`);
+        } catch {}
+
+        try {
+          const { dailyBriefingWithAI } = await import('./aiAgent');
+          const persona = await getPersona();
+          const briefing = await dailyBriefingWithAI(facts.join('; '), persona);
+          speak(briefing);
+          return { success: true, message: briefing, spoken: briefing };
+        } catch (e: any) {
+          const fallback = `Currently ${facts.join(', ')}.`;
+          speak(fallback);
+          return { success: true, message: fallback, spoken: fallback };
+        }
+      }
+
+      // ── Small talk / non-action utterances → witty JARVIS reply ──
+      case 'small_talk': {
+        const utterance = (params.text || params.query || '').toString();
+        try {
+          const { jarvisReplyWithAI } = await import('./aiAgent');
+          const persona = await getPersona();
+          const reply = await jarvisReplyWithAI(utterance, { history: [], persona });
+          speak(reply);
+          return { success: true, message: reply, spoken: reply };
+        } catch (e) {
+          speak('At your service.');
+          return { success: true, message: 'At your service.', spoken: 'At your service.' };
         }
       }
 

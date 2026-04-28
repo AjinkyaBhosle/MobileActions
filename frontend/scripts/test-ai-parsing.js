@@ -51,6 +51,8 @@ const VALID_ACTIONS = new Set([
   'share_location', 'vibrate', 'set_brightness', 'camera_front', 'camera_back',
   'lock_screen', 'go_back', 'go_home', 'show_recents',
   'scroll_up', 'scroll_down', 'tap_label', 'type_text', 'read_screen',
+  // JARVIS tier
+  'daily_briefing', 'small_talk',
 ]);
 
 function callOpenAI(userText) {
@@ -199,6 +201,12 @@ const TESTS = [
   { cmd: 'tap the login button', expect: ['tap_label'],
     check: (a) => /login/i.test(a[0].params.label) },
   { cmd: 'read whats on screen', expect: ['read_screen'], check: () => true },
+  // JARVIS tier
+  { cmd: 'good morning', expect: ['daily_briefing'], check: () => true },
+  { cmd: 'give me a briefing', expect: ['daily_briefing'], check: () => true },
+  { cmd: 'how are you', expect: ['small_talk'], check: () => true },
+  { cmd: 'tell me a joke', expect: ['small_talk'], check: () => true },
+  { cmd: 'thanks jarvis', expect: ['small_talk'], check: () => true },
 ];
 
 (async () => {

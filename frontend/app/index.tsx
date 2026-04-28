@@ -55,6 +55,8 @@ export default function HomeScreen() {
   const [responseText, setResponseText] = useState('');
   const [functionCalled, setFunctionCalled] = useState('');
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const historyRef = useRef<HistoryItem[]>([]);
+  useEffect(() => { historyRef.current = history; }, [history]);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [stats, setStats] = useState<CommandStats | null>(null);
@@ -123,8 +125,18 @@ export default function HomeScreen() {
          nativeHandlingRef.current = true;
          setAppState('listening');
          setTranscript('Listening for command...');
-         
-         // Start Google STT to capture the complex command
+
+         // JARVIS acknowledgment — quick "Yes?" so user knows we heard them.
+         // Uses premium TTS if available, else system TTS.
+         try {
+           const { speakPremium } = await import('../src/services/aiAgent');
+           const ok = await speakPremium('Yes, sir?', 'onyx');
+           if (!ok) {
+             const Speech = await import('expo-speech');
+             Speech.speak('Yes?', { rate: 1.1, pitch: 1.0 });
+           }
+         } catch { /* best effort */ }
+
          console.log('[STT] Starting with lang:', supportedLangRef.current, 'pkg:', recognizerPkgRef.current);
          ExpoSpeechRecognitionModule.start({
            lang: supportedLangRef.current,
@@ -243,7 +255,17 @@ export default function HomeScreen() {
 
     try {
       console.log('[AI] Sending to OpenAI...');
-      const aiActions = await processCommandWithAI(rawText);
+      // Build conversational context from last 5 successful turns so the AI can
+      // resolve pronouns ("call her back", "send the same message").
+      const ctx = {
+        history: historyRef.current
+          .filter(h => h.success && h.actionType !== 'unknown')
+          .slice(0, 5)
+          .reverse()
+          .map(h => ({ user: h.command, actions: [{ action: h.actionType, params: {} }] })),
+        persona: 'jarvis' as const,
+      };
+      const aiActions = await processCommandWithAI(rawText, ctx);
       console.log('[AI] OpenAI response:', JSON.stringify(aiActions));
 
       if (aiActions.length === 0) {

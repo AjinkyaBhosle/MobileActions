@@ -13,6 +13,13 @@ export interface AIActionResponse {
   params?: Record<string, any>;
 }
 
+export interface ConversationContext {
+  /** Last N user commands + interpretations, oldest → newest */
+  history: { user: string; actions: AIActionResponse[] }[];
+  /** Optional persona — 'jarvis' enables witty butler tone */
+  persona?: 'jarvis' | 'neutral';
+}
+
 const SYSTEM_PROMPT = `You are the brain of "Mobile Action", a voice automation app for Android.
 Convert the user's spoken command into a sequence of structured action objects.
 
@@ -79,15 +86,25 @@ ACTION CATALOG (use these exact names):
 52. tap_label                  params: {"label": "<visible text on a button or link>"}
 53. type_text                  params: {"text": "<text to type into focused field>"}
 54. read_screen                params: {}
+55. daily_briefing             params: {}                    — for "good morning", "what's my status", "give me a briefing", "morning briefing"
+56. small_talk                 params: {"text": "<original utterance>"} — greetings/thanks/jokes/questions like "how are you", "tell me a joke", "good night", "thank you"
 
 PARSING NOTES:
 - 24-hour conversion: "7am" → 7:00, "7:30 pm" → 19:30, "noon" → 12:00, "midnight" → 0:00.
-- Strip wake words ("hey mobile", etc.) from your understanding.
+- Strip wake words ("hey mobile", "hey jarvis", etc.) from your understanding.
 - Spoken digits → joined number ("two zero one" → "201").
 - For YouTube/Spotify, extract the song/artist into the query.
 - For WhatsApp/Gmail, extract recipient and message body separately.
 - "Take a note that I need milk" → {"text": "I need milk"}
 - "Set alarms every 5 min from 7 to 8 am" → 13 set_alarm actions: 7:00, 7:05, 7:10, ..., 8:00.
+
+CONTEXT / PRONOUN RESOLUTION:
+- Conversation history is provided as prior turns. Use it to resolve pronouns.
+- "call her back" / "him back" / "them" → look up the most recent make_call action's contact and reuse it.
+- "send the same message to dad" → reuse last send_sms/whatsapp_send 'message' field, set contact to "dad".
+- "do that again" / "repeat that" → re-emit the most recent action verbatim.
+- "and then ..." → append to chain; do not include the historical action.
+- "cancel that" / "never mind" → return {"actions": []}.
 
 EXAMPLES:
 User: "call mom and set an alarm to 7 am tomorrow"
@@ -168,24 +185,55 @@ Response: {"actions":[{"action":"read_screen","params":{}}]}
 User: "fetch the article from example.com/news and summarize it"
 Response: {"actions":[{"action":"web_fetch","params":{"url":"example.com/news"}}]}
 
+User: "good morning"
+Response: {"actions":[{"action":"daily_briefing","params":{}}]}
+
+User: "give me a briefing"
+Response: {"actions":[{"action":"daily_briefing","params":{}}]}
+
+User: "how are you"
+Response: {"actions":[{"action":"small_talk","params":{"text":"how are you"}}]}
+
+User: "tell me a joke"
+Response: {"actions":[{"action":"small_talk","params":{"text":"tell me a joke"}}]}
+
+User: "thank you" / "thanks jarvis"
+Response: {"actions":[{"action":"small_talk","params":{"text":"thank you"}}]}
+
+PRONOUN-RESOLUTION EXAMPLE (using prior conversation history):
+[prior turn] user: "call mom"   assistant: {"actions":[{"action":"make_call","params":{"contact":"mom"}}]}
+User: "send her a message saying running late"
+Response: {"actions":[{"action":"send_sms","params":{"contact":"mom","message":"running late"}}]}
+
 User: "wxyzqq blah blah"
 Response: {"actions":[]}`;
 
-export const processCommandWithAI = async (commandText: string): Promise<AIActionResponse[]> => {
+export const processCommandWithAI = async (
+  commandText: string,
+  context: ConversationContext = { history: [], persona: 'jarvis' }
+): Promise<AIActionResponse[]> => {
   if (!OPENAI_API_KEY) {
     console.error("[AI Agent] Missing EXPO_PUBLIC_OPENAI_API_KEY. Add it to frontend/.env and rebuild.");
     throw new Error("Missing OpenAI API Key");
   }
+
+  // Build messages with conversation history for pronoun resolution.
+  // ('call her back' → look up the last make_call's contact).
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: SYSTEM_PROMPT },
+  ];
+  for (const turn of (context.history || []).slice(-5)) {
+    messages.push({ role: 'user', content: turn.user });
+    messages.push({ role: 'assistant', content: JSON.stringify({ actions: turn.actions }) });
+  }
+  messages.push({ role: 'user', content: commandText });
 
   try {
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
         model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: commandText }
-        ],
+        messages,
         temperature: 0,
         response_format: { type: 'json_object' },
       },
@@ -203,7 +251,6 @@ export const processCommandWithAI = async (commandText: string): Promise<AIActio
     try {
       parsed = JSON.parse(reply);
     } catch (parseErr) {
-      // Fallback: strip markdown fences if model ignored json mode
       const cleaned = reply.replace(/```json/g, '').replace(/```/g, '').trim();
       parsed = JSON.parse(cleaned);
     }
@@ -260,4 +307,93 @@ export async function newsBriefingWithAI(topic: string): Promise<string> {
     'Use phrases like "in recent news" or "lately" — do not invent specific dates or breaking events. End by suggesting the user open a news app for full details.',
     `Topic: ${topic}`
   );
+}
+
+/**
+ * Generate a JARVIS-style witty reply for a non-action utterance
+ * (greetings, small talk, confirmations).
+ */
+export async function jarvisReplyWithAI(userText: string, context?: ConversationContext): Promise<string> {
+  const persona = (context?.persona ?? 'jarvis') === 'jarvis'
+    ? 'You are J.A.R.V.I.S., a witty, formal British-butler AI assistant. Address the user as "sir" or "ma\'am". Keep replies to 1-2 short spoken sentences. Be dry, helpful, slightly cheeky. No markdown.'
+    : 'You are a helpful concise voice assistant. 1 short sentence reply. No markdown.';
+  return chat(persona, userText);
+}
+
+/**
+ * Synthesize a JARVIS-style daily briefing from supplied context facts.
+ * `facts` is a free-text bag like "battery 87%; 5 unread WhatsApp; 2 alarms today; 14:32".
+ */
+export async function dailyBriefingWithAI(facts: string, persona: 'jarvis' | 'neutral' = 'jarvis'): Promise<string> {
+  const sys = persona === 'jarvis'
+    ? 'You are J.A.R.V.I.S. Synthesize the supplied phone-state facts into a friendly, formal British-butler 3-sentence briefing. Greet by time of day. Address as sir. End with a polite "anything else?". No markdown, plain text.'
+    : 'Synthesize the supplied phone-state facts into a friendly 3-sentence verbal briefing. End with "anything else?". Plain text.';
+  return chat(sys, facts);
+}
+
+// ─── Premium TTS via OpenAI /v1/audio/speech ─────────────────────────────────
+//
+// JARVIS-tier voice. Voices: 'onyx' (deep male, JARVIS-like), 'echo', 'nova',
+// 'shimmer', 'fable' (British male). Falls back to system TTS if any step fails.
+//
+// REQUIRES the user to install: yarn add expo-av expo-file-system
+// (Both are dynamically required so the app still runs without them.)
+
+let _ttsSound: any = null;
+
+export async function speakPremium(
+  text: string,
+  voice: 'onyx' | 'echo' | 'nova' | 'shimmer' | 'fable' = 'onyx'
+): Promise<boolean> {
+  if (!OPENAI_API_KEY || !text) return false;
+
+  // Lazy-require so app still builds if these libs aren't installed.
+  let FileSystem: any, Audio: any;
+  try {
+    FileSystem = require('expo-file-system');
+    Audio = require('expo-av').Audio;
+  } catch (e) {
+    console.warn('[Premium TTS] expo-av / expo-file-system not installed — falling back to system TTS. Run `yarn add expo-av expo-file-system`.');
+    return false;
+  }
+
+  try {
+    const response = await axios.post(
+      'https://api.openai.com/v1/audio/speech',
+      { model: 'gpt-4o-mini-tts', voice, input: text, response_format: 'mp3', speed: 1.05 },
+      {
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+        responseType: 'arraybuffer',
+        timeout: 12000,
+      }
+    );
+
+    const fileUri = `${FileSystem.cacheDirectory}jarvis-tts-${Date.now()}.mp3`;
+    // Convert ArrayBuffer → base64 without relying on Node Buffer
+    const bytes = new Uint8Array(response.data);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    const b64 = (typeof btoa !== 'undefined') ? btoa(binary) : globalThis.Buffer?.from(bytes).toString('base64') || '';
+    if (!b64) return false;
+
+    await FileSystem.writeAsStringAsync(fileUri, b64, { encoding: FileSystem.EncodingType.Base64 });
+
+    if (_ttsSound) {
+      try { await _ttsSound.unloadAsync(); } catch {}
+      _ttsSound = null;
+    }
+    const { sound } = await Audio.Sound.createAsync({ uri: fileUri }, { shouldPlay: true });
+    _ttsSound = sound;
+    sound.setOnPlaybackStatusUpdate((status: any) => {
+      if (status.didJustFinish) {
+        sound.unloadAsync().catch(() => {});
+        FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
+        if (_ttsSound === sound) _ttsSound = null;
+      }
+    });
+    return true;
+  } catch (e: any) {
+    console.warn('[Premium TTS] Failed, will fall back to system TTS:', e?.message);
+    return false;
+  }
 }

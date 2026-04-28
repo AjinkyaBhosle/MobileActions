@@ -149,9 +149,9 @@ class WakeWordService : Service(), RecognitionListener {
     private var isCommandState = false
     private var isTransitioning = false
     private var isFlashlightOn = false  // Track flashlight state for React Native bridge calls
-    private val WAKE_WORDS = arrayOf("hey mobile", "hi mobile", "hello mobile", "ok mobile", "yo mobile", "mobile", "action")
+    private val WAKE_WORDS = arrayOf("hey mobile", "hi mobile", "hello mobile", "ok mobile", "yo mobile", "mobile", "action", "hey jarvis", "jarvis", "hey assistant")
     
-    private val WAKE_GRAMMAR = "[\"hey mobile\", \"hi mobile\", \"hello mobile\", \"ok mobile\", \"yo mobile\", \"mobile\", \"action\", \"[unk]\"]"
+    private val WAKE_GRAMMAR = "[\"hey mobile\", \"hi mobile\", \"hello mobile\", \"ok mobile\", \"yo mobile\", \"mobile\", \"action\", \"hey jarvis\", \"jarvis\", \"hey assistant\", \"[unk]\"]"
 
     fun startListening() {
         try {
