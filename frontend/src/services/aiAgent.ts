@@ -543,7 +543,9 @@ export async function speakPremium(
     const b64 = (typeof btoa !== 'undefined') ? btoa(binary) : globalThis.Buffer?.from(bytes).toString('base64') || '';
     if (!b64) return false;
 
-    await FileSystem.writeAsStringAsync(fileUri, b64, { encoding: FileSystem.EncodingType.Base64 });
+    // expo-file-system v19 removed EncodingType enum; pass string literal (backward-compatible).
+    const base64Encoding = FileSystem.EncodingType?.Base64 || 'base64';
+    await FileSystem.writeAsStringAsync(fileUri, b64, { encoding: base64Encoding });
 
     if (_ttsSound) {
       try { await _ttsSound.unloadAsync(); } catch {}
