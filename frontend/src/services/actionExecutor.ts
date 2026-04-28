@@ -165,56 +165,107 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
 
       // ── Phone Call ──
       case 'make_call': {
-        const contact = params.contact || '';
-        if (contact) {
-          const isNumber = /^[\d+\-\s()]+$/.test(contact);
-          const sanitizedContact = isNumber ? contact.replace(/[\s\-()]/g, '') : '';
-          
-          if (sanitizedContact && Platform.OS === 'android') {
-            try {
-              // Request runtime permission to make direct calls
-              const granted = await PermissionsAndroid.request(
-                PermissionsAndroid.PERMISSIONS.CALL_PHONE
-              );
-              
-              if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-                // FLAG_ACTIVITY_NEW_TASK (268435456) forces the intent out of our activity stack.
-                // This prevents `startActivityForResult` from hanging indefinitely, which avoids E_ACTIVITY_ALREADY_STARTED.
-                await IntentLauncher.startActivityAsync('android.intent.action.CALL', {
-                  data: `tel:${sanitizedContact}`,
-                  flags: 268435456,
-                }).catch(() => {
-                  // Catch internally if it immediately cancels
-                });
-                
-                speak(`Calling ${sanitizedContact}`);
-                return { success: true, message: `Calling ${sanitizedContact}`, spoken: `Calling ${sanitizedContact}` };
-              }
-            } catch (error) {
-              console.warn('Call permission error:', error);
-            }
-          }
-          
-          // Fallback to dialer if iOS, if not a direct number, or if permission denied
-          await Linking.openURL(`tel:${sanitizedContact || contact}`);
-          speak(`Opening dialer for ${contact}`);
-          return { success: true, message: `Dialer: ${contact}`, spoken: `Opening dialer` };
+        const contact = (params.contact || params.nameOrNumber || '').toString();
+        if (!contact) {
+          await Linking.openURL('tel:');
+          speak('Opening dialer');
+          return { success: true, message: 'Dialer opened', spoken: 'Opening dialer' };
         }
-        await Linking.openURL('tel:');
-        speak('Opening dialer');
-        return { success: true, message: 'Dialer opened', spoken: 'Opening dialer' };
+
+        const isNumber = /^[\d+\-\s()]+$/.test(contact);
+        let resolvedNumber = isNumber ? contact.replace(/[\s\-()]/g, '') : '';
+
+        // If not a number, look up the contact by name via native bridge
+        if (!resolvedNumber && Platform.OS === 'android' && WakeWordModule?.lookupContact) {
+          try {
+            const granted = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.READ_CONTACTS
+            );
+            if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+              const found: string | null = await WakeWordModule.lookupContact(contact);
+              if (found) resolvedNumber = found;
+            }
+          } catch (e) {
+            console.warn('[Action] Contact lookup failed:', e);
+          }
+        }
+
+        if (!resolvedNumber) {
+          speak(`I couldn't find ${contact} in your contacts`);
+          return {
+            success: false,
+            message: `Contact "${contact}" not found`,
+            spoken: `I couldn't find ${contact} in your contacts`,
+          };
+        }
+
+        // Try silent placeCall via native TelecomManager first (no dialer flicker)
+        if (Platform.OS === 'android') {
+          try {
+            const granted = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.CALL_PHONE
+            );
+            if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+              if (WakeWordModule?.placeCall) {
+                await WakeWordModule.placeCall(resolvedNumber);
+              } else {
+                await IntentLauncher.startActivityAsync('android.intent.action.CALL', {
+                  data: `tel:${resolvedNumber}`,
+                  flags: 268435456,
+                }).catch(() => {});
+              }
+              speak(`Calling ${contact}`);
+              return {
+                success: true,
+                message: `Calling ${contact} (${resolvedNumber})`,
+                spoken: `Calling ${contact}`,
+              };
+            }
+          } catch (error) {
+            console.warn('Call permission error:', error);
+          }
+        }
+
+        // Fallback to dialer (iOS or no permission)
+        await Linking.openURL(`tel:${resolvedNumber}`);
+        speak(`Opening dialer for ${contact}`);
+        return { success: true, message: `Dialer: ${contact}`, spoken: `Opening dialer` };
       }
 
       // ── SMS ──
       case 'send_sms': {
-        const recipient = params.contact || '';
-        const message = params.message || '';
+        const recipientRaw = (params.contact || params.nameOrNumber || '').toString();
+        const message = (params.message || '').toString();
+        let recipient = recipientRaw;
+
+        // Resolve name → number if needed (Android)
+        const isNumber = /^[\d+\-\s()]+$/.test(recipientRaw);
+        if (recipientRaw && !isNumber && Platform.OS === 'android' && WakeWordModule?.lookupContact) {
+          try {
+            const granted = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.READ_CONTACTS
+            );
+            if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+              const found: string | null = await WakeWordModule.lookupContact(recipientRaw);
+              if (found) recipient = found;
+            }
+          } catch (e) {
+            console.warn('[Action] Contact lookup failed:', e);
+          }
+        } else if (isNumber) {
+          recipient = recipientRaw.replace(/[\s\-()]/g, '');
+        }
+
         const smsUrl = message
           ? `sms:${recipient}?body=${encodeURIComponent(message)}`
           : `sms:${recipient}`;
         await Linking.openURL(smsUrl);
-        speak(`Opening messaging for ${recipient || 'new message'}`);
-        return { success: true, message: `SMS to ${recipient || 'new'}`, spoken: `Opening messaging` };
+        speak(`Opening message to ${recipientRaw || 'new contact'}`);
+        return {
+          success: true,
+          message: `SMS to ${recipientRaw || 'new'}: ${message || '(no body)'}`,
+          spoken: `Opening messaging`,
+        };
       }
 
       case 'open_dialer':
@@ -252,24 +303,28 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
       // ── Alarm ──
       case 'set_alarm': {
         if (Platform.OS === 'android') {
-          const hour = params.hour || '7';
-          const minute = params.minute || '0';
+          const hour = parseInt((params.hour || '7').toString(), 10);
+          const minute = parseInt((params.minute || '0').toString(), 10);
           try {
             await IntentLauncher.startActivityAsync('android.intent.action.SET_ALARM', {
               extra: {
-                'android.intent.extra.alarm.HOUR': parseInt(hour),
-                'android.intent.extra.alarm.MINUTES': parseInt(minute),
-                'android.intent.extra.alarm.SKIP_UI': false,
+                'android.intent.extra.alarm.HOUR': hour,
+                'android.intent.extra.alarm.MINUTES': minute,
+                'android.intent.extra.alarm.SKIP_UI': true,
+                'android.intent.extra.alarm.MESSAGE': (params.label || 'Mobile Action alarm').toString(),
               },
             });
-          } catch {
+          } catch (e) {
+            console.warn('SET_ALARM intent failed:', e);
             await IntentLauncher.startActivityAsync('android.intent.action.MAIN', {
               category: 'android.intent.category.APP_CALENDAR',
-            });
+            }).catch(() => {});
           }
         }
-        speak(`Setting alarm for ${params.hour || '7'}:${params.minute || '00'}`);
-        return { success: true, message: `Alarm set for ${params.hour || '7'}:${(params.minute || '00').padStart(2, '0')}`, spoken: `Setting alarm` };
+        const hh = (params.hour || '7').toString();
+        const mm = (params.minute || '0').toString().padStart(2, '0');
+        speak(`Setting alarm for ${hh}:${mm}`);
+        return { success: true, message: `Alarm set for ${hh}:${mm}`, spoken: `Setting alarm for ${hh}:${mm}` };
       }
 
       // ── Open App ──

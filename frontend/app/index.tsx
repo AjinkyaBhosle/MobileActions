@@ -135,7 +135,9 @@ export default function HomeScreen() {
            androidRecognitionServicePackage: recognizerPkgRef.current,
          });
          
-         // Auto-reset UI after timeout in case nothing happens
+         // Auto-reset UI after timeout in case nothing happens.
+         // 12s allows for longer multi-clause commands like
+         // "call mom and set an alarm to 7 am tomorrow and turn on flashlight".
          setTimeout(() => {
            if (appStateRef.current === 'listening') {
              nativeHandlingRef.current = false;
@@ -144,7 +146,7 @@ export default function HomeScreen() {
              setTranscript('');
              startVoskOnly();
            }
-         }, 7000);
+         }, 12000);
       }
     });
 
@@ -238,44 +240,76 @@ export default function HomeScreen() {
     console.log('[AI] processCommand called with:', rawText);
     setAppState('processing');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
     try {
       console.log('[AI] Sending to OpenAI...');
       const aiActions = await processCommandWithAI(rawText);
       console.log('[AI] OpenAI response:', JSON.stringify(aiActions));
+
+      if (aiActions.length === 0) {
+        setResponseText("I didn't understand that. Try a clearer command.");
+        setAppState('error');
+        setTimeout(() => { setAppState('idle'); setResponseText(''); setTranscript(''); }, 4000);
+        return;
+      }
+
+      // Order actions so background ones run first; app-switching ones (call, sms,
+      // maps, camera, app launches) run LAST so they don't pre-empt the others.
+      const FOREGROUND_ACTIONS = new Set([
+        'make_call', 'send_sms', 'open_maps', 'open_camera', 'open_app',
+        'open_dialer', 'open_calendar', 'open_contacts',
+      ]);
+      const ordered = [...aiActions].sort((a, b) => {
+        const aFg = FOREGROUND_ACTIONS.has(a.action) ? 1 : 0;
+        const bFg = FOREGROUND_ACTIONS.has(b.action) ? 1 : 0;
+        return aFg - bFg;
+      });
+
       const allMessages: string[] = [];
       let successCount = 0;
-      
-      for (const cmd of aiActions) {
+
+      for (const cmd of ordered) {
         setFunctionCalled(cmd.action);
-        // Map to ParsedCommand format for actionExecutor
-        const parsed = { action: cmd.action, params: cmd.params || {}, displayText: cmd.action };
+        const parsed = { action: cmd.action, params: cmd.params || {}, displayText: cmd.action } as any;
         const result = await executeAction(parsed);
-        
+
         if (result.actionSignal === 'FLASHLIGHT_ON') setIsFlashlightOn(true);
         if (result.actionSignal === 'FLASHLIGHT_OFF') setIsFlashlightOn(false);
-        
+
         allMessages.push(result.message);
         if (result.success) successCount++;
-        
-        // Record history
-        const item: HistoryItem = { id: Date.now().toString(), command: rawText, result: result.message, success: result.success, timestamp: new Date().toISOString(), actionType: parsed.action };
+
+        // Record history per action
+        const item: HistoryItem = {
+          id: `${Date.now()}-${cmd.action}`,
+          command: rawText,
+          result: result.message,
+          success: result.success,
+          timestamp: new Date().toISOString(),
+          actionType: cmd.action,
+        };
         setHistory(prev => {
           const newHistory = [item, ...prev].slice(0, 50);
           saveHistory(newHistory);
           return newHistory;
         });
+
+        // Brief gap so OS can finish the previous intent before the next.
+        // Long enough for SET_ALARM to register before make_call switches the app.
+        if (ordered.length > 1) {
+          await new Promise(r => setTimeout(r, 600));
+        }
       }
-      
+
       setResponseText(allMessages.join(' → '));
       setAppState(successCount > 0 ? 'success' : 'error');
     } catch (e: any) {
-      setResponseText('Failed to process with AI: ' + e.message);
+      setResponseText('Failed to process: ' + (e?.message || 'unknown error'));
       setAppState('error');
     }
-    
+
     setTimeout(() => { setAppState('idle'); setResponseText(''); setTranscript(''); }, 4000);
-  }, [history]);
+  }, []);
 
   const handlePressIn = useCallback((isHandsFree = false) => {
     if (!isHandsFree) holdingRef.current = true;

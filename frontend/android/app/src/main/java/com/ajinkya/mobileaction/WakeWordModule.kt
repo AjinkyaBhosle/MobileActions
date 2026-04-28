@@ -3,6 +3,7 @@ package com.ajinkya.mobileaction
 import android.content.*
 import android.os.IBinder
 import android.os.Build
+import android.provider.ContactsContract
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -123,6 +124,59 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
         val intent = Intent(reactApplicationContext, WakeWordService::class.java)
         intent.action = if (increase) "VOLUME_UP" else "VOLUME_DOWN"
         reactApplicationContext.startService(intent)
+    }
+
+    /**
+     * Look up a contact's phone number by partial name match.
+     * Returns the phone number string (digits only) or null if no match.
+     * Requires READ_CONTACTS permission.
+     */
+    @ReactMethod
+    fun lookupContact(nameQuery: String, promise: Promise) {
+        try {
+            val resolver = reactApplicationContext.contentResolver
+            val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+            val projection = arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            )
+            val cursor = resolver.query(uri, projection, null, null, null)
+            var bestMatch: String? = null
+            val q = nameQuery.lowercase().trim()
+            cursor?.use {
+                val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (it.moveToNext()) {
+                    val name = (it.getString(nameIdx) ?: "").lowercase()
+                    val firstName = name.split(" ").firstOrNull() ?: ""
+                    if (name.contains(q) || q == firstName || q.contains(firstName) && firstName.isNotEmpty()) {
+                        bestMatch = it.getString(numIdx)?.replace("[^0-9+]".toRegex(), "")
+                        if (name.startsWith(q) || firstName == q) {
+                            // strong match — stop searching
+                            break
+                        }
+                    }
+                }
+            }
+            Log.d(TAG, "lookupContact('$nameQuery') -> $bestMatch")
+            promise.resolve(bestMatch)
+        } catch (e: Exception) {
+            Log.e(TAG, "lookupContact error: ${e.message}")
+            promise.reject("LOOKUP_ERROR", e.message, e)
+        }
+    }
+
+    /**
+     * Place a phone call silently via TelecomManager (no dialer UI flicker).
+     * Requires CALL_PHONE permission already granted.
+     */
+    @ReactMethod
+    fun placeCall(phoneNumber: String, promise: Promise) {
+        val intent = Intent(reactApplicationContext, WakeWordService::class.java)
+        intent.action = "PLACE_CALL"
+        intent.putExtra("number", phoneNumber)
+        reactApplicationContext.startService(intent)
+        promise.resolve(true)
     }
 
     @ReactMethod

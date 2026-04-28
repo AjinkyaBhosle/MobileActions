@@ -13,50 +13,65 @@ export interface AIActionResponse {
   params?: Record<string, any>;
 }
 
+const SYSTEM_PROMPT = `You are the brain of "Mobile Action", a voice automation app for Android.
+Convert the user's spoken command into a sequence of structured action objects.
+
+CRITICAL RULES:
+- Output STRICT JSON in this exact shape: {"actions": [<action>, ...]}
+- Use ONLY action names from the catalog below — no others.
+- If the user requests multiple things ("call mom AND set alarm AND turn on flashlight"), return ONE action object per request, in the order spoken.
+- If you cannot understand the command, return {"actions": []}.
+- Do not include explanations, markdown, or any text outside the JSON object.
+
+ACTION CATALOG (use these exact names):
+1.  flashlight_on        — params: {}
+2.  flashlight_off       — params: {}
+3.  make_call            — params: {"contact": "<name or phone number>"}    (e.g. "mom", "John Smith", "+1234567890")
+4.  send_sms             — params: {"contact": "<name or number>", "message": "<text>"}
+5.  set_alarm            — params: {"hour": "<0-23>", "minute": "<0-59>", "label": "<optional>"}
+6.  open_camera          — params: {}
+7.  open_maps            — params: {"query": "<destination>"}   (omit if no destination)
+8.  volume_up            — params: {}
+9.  volume_down          — params: {}
+10. brightness_up        — params: {}
+11. brightness_down      — params: {}
+12. wifi_settings        — params: {}
+13. bluetooth_settings   — params: {}
+14. airplane_settings    — params: {}
+15. battery_info         — params: {}
+16. open_calendar        — params: {}
+17. open_contacts        — params: {}
+18. open_app             — params: {"appName": "<lowercase name>"}    (e.g. "whatsapp", "youtube", "spotify")
+19. time_query           — params: {}
+20. date_query           — params: {}
+
+PARSING NOTES:
+- Convert spoken time to 24-hour: "7am" → hour 7, minute 0. "7:30 pm" → hour 19, minute 30. "noon" → hour 12. "midnight" → hour 0.
+- Strip wake words ("hey mobile", "ok mobile", etc.) from your understanding.
+- If user says "tomorrow" with an alarm, just use the time — Android schedules for next occurrence.
+- Phone number in spoken digits → join digits, no spaces. ("two zero one five five five" → "201555")
+
+EXAMPLES:
+User: "call mom and set an alarm to 7 am tomorrow"
+Response: {"actions":[{"action":"make_call","params":{"contact":"mom"}},{"action":"set_alarm","params":{"hour":"7","minute":"0"}}]}
+
+User: "turn on the flashlight then open whatsapp"
+Response: {"actions":[{"action":"flashlight_on","params":{}},{"action":"open_app","params":{"appName":"whatsapp"}}]}
+
+User: "send a message to john saying I'll be late"
+Response: {"actions":[{"action":"send_sms","params":{"contact":"john","message":"I'll be late"}}]}
+
+User: "what time is it"
+Response: {"actions":[{"action":"time_query","params":{}}]}
+
+User: "wxyzqq blah blah"
+Response: {"actions":[]}`;
+
 export const processCommandWithAI = async (commandText: string): Promise<AIActionResponse[]> => {
   if (!OPENAI_API_KEY) {
     console.error("[AI Agent] Missing EXPO_PUBLIC_OPENAI_API_KEY. Add it to frontend/.env and rebuild.");
     throw new Error("Missing OpenAI API Key");
   }
-
-  const systemPrompt = `
-You are the intelligent Brain for a mobile automation agent.
-Your job is to read the user's natural language command and convert it into one or more JSON action objects.
-You control the user's Android phone.
-
-Available actions you can perform (use these exact names):
-1.  "flashlight_on"      — Turns the flashlight on. No params.
-2.  "flashlight_off"     — Turns the flashlight off. No params.
-3.  "make_call"          — Calls a phone number or contact. params: { "contact": "<name or number>" }
-4.  "send_sms"           — Sends a text message. params: { "contact": "<name or number>", "message": "<body>" }
-5.  "set_alarm"          — Sets an alarm. params: { "hour": "7", "minute": "30" }
-6.  "open_camera"        — Opens the camera app. No params.
-7.  "open_maps"          — Opens maps. params: { "query": "<destination>" } (optional)
-8.  "volume_up"          — Increases volume. No params.
-9.  "volume_down"        — Decreases volume. No params.
-10. "brightness_up"      — Increases brightness. No params.
-11. "brightness_down"    — Decreases brightness. No params.
-12. "wifi_settings"      — Opens WiFi settings. No params.
-13. "bluetooth_settings" — Opens Bluetooth settings. No params.
-14. "airplane_settings"  — Opens Airplane mode settings. No params.
-15. "battery_info"       — Reports battery level. No params.
-16. "open_calendar"      — Opens the calendar app. No params.
-17. "open_contacts"      — Opens contacts app. No params.
-18. "open_app"           — Opens any app. params: { "appName": "<name>", "packageName": "<android.pkg>" } (packageName optional)
-19. "time_query"         — Tells the current time. No params.
-20. "date_query"         — Tells today's date. No params.
-
-Output Requirements:
-- Return ONLY a raw JSON array of action objects, no markdown, no explanation.
-- If multiple actions are requested, return them in order.
-- If you cannot map the command, return an empty array [].
-
-Example Output:
-[
-  {"action": "flashlight_on", "params": {}},
-  {"action": "send_sms", "params": {"contact": "John", "message": "I'll be late"}}
-]
-`;
 
   try {
     const response = await axios.post(
@@ -64,10 +79,11 @@ Example Output:
       {
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: commandText }
         ],
-        temperature: 0.1,
+        temperature: 0,
+        response_format: { type: 'json_object' },
       },
       {
         headers: {
@@ -79,13 +95,20 @@ Example Output:
     );
 
     const reply: string = response.data.choices[0].message.content.trim();
-    // Clean up potential markdown formatting
-    const jsonString = reply.replace(/```json/g, '').replace(/```/g, '').trim();
-    const actions = JSON.parse(jsonString) as AIActionResponse[];
-    return Array.isArray(actions) ? actions : [];
+    let parsed: { actions?: AIActionResponse[] };
+    try {
+      parsed = JSON.parse(reply);
+    } catch (parseErr) {
+      // Fallback: strip markdown fences if model ignored json mode
+      const cleaned = reply.replace(/```json/g, '').replace(/```/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    }
 
+    const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
+    console.log('[AI Agent] Parsed', actions.length, 'action(s):', JSON.stringify(actions));
+    return actions;
   } catch (error: any) {
-    console.error("[AI Agent] Failed to process command:", error?.message || error);
+    console.error("[AI Agent] Failed:", error?.response?.data || error?.message || error);
     throw error;
   }
 };

@@ -51,6 +51,10 @@ class WakeWordService : Service(), RecognitionListener {
             "FLASHLIGHT_OFF" -> setFlashlight(false)
             "VOLUME_UP" -> adjustVolume(true)
             "VOLUME_DOWN" -> adjustVolume(false)
+            "PLACE_CALL" -> {
+                val number = intent.getStringExtra("number") ?: ""
+                if (number.isNotEmpty()) makePhoneCall(number)
+            }
         }
 
         return START_STICKY
