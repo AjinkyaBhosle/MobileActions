@@ -956,6 +956,144 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
         }
       }
 
+      // ── File manager / folder open ──
+      case 'open_file_manager': {
+        const folder = (params.folder || params.path || '').toString();
+        if (Platform.OS === 'android' && WakeWordModule?.openFileManager) {
+          try { await WakeWordModule.openFileManager(folder); } catch (e) { console.warn(e); }
+        }
+        speak(folder ? `Opening ${folder}` : 'Opening file manager');
+        return { success: true, message: folder ? `Files: ${folder}` : 'File manager', spoken: 'Opening file manager' };
+      }
+
+      // ── Play media file by name (audio/video) ──
+      case 'play_file': {
+        const name = (params.name || params.file || params.query || '').toString().trim();
+        const type = ((params.type || 'any').toString().toLowerCase()); // audio | video | any
+        if (!name) return { success: false, message: 'Which file?', spoken: 'Which file?' };
+
+        if (Platform.OS === 'android' && WakeWordModule?.findAndPlayMedia) {
+          try {
+            // Need READ_MEDIA_AUDIO / READ_MEDIA_VIDEO on Android 13+
+            const granted = await PermissionsAndroid.requestMultiple([
+              'android.permission.READ_MEDIA_AUDIO' as any,
+              'android.permission.READ_MEDIA_VIDEO' as any,
+              PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+            ]);
+            const ok = Object.values(granted).some(v => v === PermissionsAndroid.RESULTS.GRANTED);
+            if (!ok) {
+              speak('I need media access to play files');
+              return { success: false, message: 'Media permission denied', spoken: 'Please grant media access' };
+            }
+            const title: string | null = await WakeWordModule.findAndPlayMedia(name, type);
+            if (title) {
+              speak(`Playing ${title}`);
+              return { success: true, message: `Playing: ${title}`, spoken: `Playing ${title}` };
+            }
+          } catch (e) { console.warn('[play_file] error:', e); }
+        }
+        speak(`I couldn't find ${name}`);
+        return { success: false, message: `No media file matching "${name}"`, spoken: `Could not find ${name}` };
+      }
+
+      // ── Dismiss / Snooze a ringing alarm via Accessibility ──
+      // Works when the alarm UI is visible (even on locked screen) by tapping
+      // its on-screen Stop / Dismiss / Snooze button by label.
+      case 'dismiss_alarm':
+      case 'snooze_alarm': {
+        if (!WakeWordModule?.accClickLabel) {
+          return { success: false, message: 'Enable accessibility to dismiss alarms', spoken: 'Please enable accessibility access' };
+        }
+        const labels = action === 'dismiss_alarm'
+          ? ['stop', 'dismiss', 'turn off', 'cancel alarm', 'stop alarm', 'ok']
+          : ['snooze', 'snooze alarm', 'remind me later'];
+        let succeeded = false;
+        for (const lbl of labels) {
+          try {
+            const ok = await WakeWordModule.accClickLabel(lbl);
+            if (ok) { succeeded = true; break; }
+          } catch { /* try next label */ }
+        }
+        if (succeeded) {
+          speak(action === 'dismiss_alarm' ? 'Alarm dismissed' : 'Snoozed');
+          return { success: true, message: action === 'dismiss_alarm' ? 'Alarm stopped' : 'Snoozed', spoken: action === 'dismiss_alarm' ? 'Alarm dismissed' : 'Snoozed' };
+        }
+        // Fallback: kill the audio for the alarm stream
+        try { await WakeWordModule.setMute?.(true); } catch {}
+        speak('Tried to dismiss the alarm');
+        return { success: false, message: 'No alarm UI button found — muted instead', spoken: 'Could not find dismiss button' };
+      }
+
+      // ── Continuous location tracking → Firestore ──
+      case 'start_tracking': {
+        const minutes = parseInt((params.duration || params.minutes || '30').toString(), 10);
+        const intervalSec = parseInt((params.interval || '30').toString(), 10);
+        if (Platform.OS !== 'android' || !WakeWordModule?.startLocationTracking) {
+          return { success: false, message: 'Tracking not supported', spoken: 'Tracking is not supported on this device' };
+        }
+        const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          return { success: false, message: 'Location permission denied', spoken: 'Please grant location access' };
+        }
+        // Start session in Firestore
+        let sessionId = `track-${Date.now()}`;
+        try {
+          const { db } = await import('./firebaseConfig');
+          const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+          await setDoc(doc(db, 'tracking-sessions', sessionId), {
+            started_at: serverTimestamp(),
+            duration_min: minutes,
+            interval_sec: intervalSec,
+            status: 'active',
+          });
+        } catch (e) { console.warn('[track] Firestore session create failed:', e); }
+
+        // Subscribe to native location updates and write each to Firestore
+        try {
+          const { DeviceEventEmitter } = await import('react-native');
+          const sub = DeviceEventEmitter.addListener('onLocationUpdate', async (loc) => {
+            try {
+              const { db } = await import('./firebaseConfig');
+              const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+              await addDoc(collection(db, 'tracking-sessions', sessionId, 'points'), {
+                lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy,
+                ts: loc.ts, recorded_at: serverTimestamp(),
+              });
+            } catch (e) { console.warn('[track] write point failed:', e); }
+          });
+          // Auto-cleanup after duration
+          setTimeout(() => sub.remove(), minutes * 60_000 + 5_000);
+        } catch (e) { console.warn(e); }
+
+        await WakeWordModule.startLocationTracking(intervalSec, minutes);
+        speak(`Tracking your location for ${minutes} minutes`);
+        return { success: true, message: `Tracking started — session ${sessionId} for ${minutes} min`, spoken: `Tracking for ${minutes} minutes` };
+      }
+      case 'stop_tracking': {
+        if (Platform.OS === 'android' && WakeWordModule?.stopLocationTracking) {
+          try { await WakeWordModule.stopLocationTracking(); } catch (e) { console.warn(e); }
+        }
+        speak('Tracking stopped');
+        return { success: true, message: 'Tracking stopped', spoken: 'Tracking stopped' };
+      }
+
+      // ── Share live location ──
+      // Two-step: opens Google Maps share dialog. User taps "Share live location"
+      // and selects duration/recipient (Maps' own UI — we can't bypass that).
+      case 'share_live_location': {
+        const contact = (params.contact || '').toString();
+        const minutes = (params.minutes || params.duration || '60').toString();
+        // Open Google Maps to its share-location entry point
+        await Linking.openURL('https://www.google.com/maps/timeline/_/sharelocation').catch(async () => {
+          await Linking.openURL('google.navigation:q=current+location');
+        });
+        const hint = `Tap Share Live Location, choose ${minutes} minutes${contact ? `, then select ${contact}` : ''}.`;
+        speak(`Opening Maps. ${hint}`);
+        return { success: true, message: `Live location → ${contact || 'pick recipient'} for ${minutes} min. ${hint}`, spoken: hint };
+      }
+
+      // ── Small talk PLACEHOLDER markers fixed (avoid duplicate case) ──
+
       // ── Unknown ──
       default:
         speak("Sorry, I didn't understand that command");

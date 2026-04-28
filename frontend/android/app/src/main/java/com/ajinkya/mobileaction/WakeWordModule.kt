@@ -375,7 +375,6 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             val launchableApps = pm.getInstalledApplications(0)
                 .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
 
-            // Score each app: exact label match = 100, starts-with = 50, contains = 10.
             data class Hit(val score: Int, val pkg: String, val label: String)
             val hits = launchableApps.mapNotNull { ai ->
                 val label = (pm.getApplicationLabel(ai)?.toString() ?: "").lowercase()
@@ -391,13 +390,8 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             }.sortedByDescending { it.score }
 
             val best = hits.firstOrNull()
-            if (best == null) {
-                promise.resolve(null)
-                return
-            }
-            val intent = pm.getLaunchIntentForPackage(best.pkg) ?: run {
-                promise.resolve(null); return
-            }
+            if (best == null) { promise.resolve(null); return }
+            val intent = pm.getLaunchIntentForPackage(best.pkg) ?: run { promise.resolve(null); return }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             reactApplicationContext.startActivity(intent)
             Log.d(TAG, "launchAppByName('$query') -> ${best.label} (${best.pkg})")
@@ -406,6 +400,142 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
             Log.e(TAG, "launchAppByName error: ${e.message}")
             promise.reject("LAUNCH_ERR", e.message, e)
         }
+    }
+
+    /**
+     * Find an audio/video file by partial name in MediaStore and open it
+     * with the system's default media player via ACTION_VIEW.
+     * type: "audio" | "video" | "any"
+     */
+    @ReactMethod
+    fun findAndPlayMedia(name: String, type: String, promise: Promise) {
+        try {
+            val q = "%${name.replace("[^a-zA-Z0-9 ]".toRegex(), "")}%"
+            val resolver = reactApplicationContext.contentResolver
+            data class Found(val uri: android.net.Uri, val mime: String, val title: String)
+            var found: Found? = null
+
+            if (type == "audio" || type == "any") {
+                val uri = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                resolver.query(
+                    uri,
+                    arrayOf(android.provider.MediaStore.Audio.Media._ID, android.provider.MediaStore.Audio.Media.TITLE),
+                    "${android.provider.MediaStore.Audio.Media.TITLE} LIKE ?",
+                    arrayOf(q),
+                    "${android.provider.MediaStore.Audio.Media.DATE_ADDED} DESC LIMIT 1"
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        val id = c.getLong(0); val title = c.getString(1) ?: name
+                        found = Found(android.content.ContentUris.withAppendedId(uri, id), "audio/*", title)
+                    }
+                }
+            }
+            if (found == null && (type == "video" || type == "any")) {
+                val uri = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                resolver.query(
+                    uri,
+                    arrayOf(android.provider.MediaStore.Video.Media._ID, android.provider.MediaStore.Video.Media.TITLE),
+                    "${android.provider.MediaStore.Video.Media.TITLE} LIKE ?",
+                    arrayOf(q),
+                    "${android.provider.MediaStore.Video.Media.DATE_ADDED} DESC LIMIT 1"
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        val id = c.getLong(0); val title = c.getString(1) ?: name
+                        found = Found(android.content.ContentUris.withAppendedId(uri, id), "video/*", title)
+                    }
+                }
+            }
+            if (found == null) { promise.resolve(null); return }
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(found!!.uri, found!!.mime)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            reactApplicationContext.startActivity(intent)
+            promise.resolve(found!!.title)
+        } catch (e: Exception) {
+            Log.e(TAG, "findAndPlayMedia error: ${e.message}")
+            promise.reject("MEDIA_ERR", e.message, e)
+        }
+    }
+
+    /**
+     * Open a folder in the default file manager (best-effort).
+     * Falls back to launching the file manager app itself.
+     */
+    @ReactMethod
+    fun openFileManager(folderPath: String?, promise: Promise) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (!folderPath.isNullOrBlank()) {
+                    val uri = android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3A${android.net.Uri.encode(folderPath)}")
+                    setDataAndType(uri, "vnd.android.document/directory")
+                } else {
+                    setType("*/*")
+                }
+            }
+            try {
+                reactApplicationContext.startActivity(intent)
+                promise.resolve(true); return
+            } catch (e: Exception) { /* try fallback */ }
+            // Fallback: open default Files app via launchAppByName
+            launchAppByName("files", promise)
+        } catch (e: Exception) {
+            promise.reject("FM_ERR", e.message, e)
+        }
+    }
+
+    // ── Continuous location tracking (writes coords to Firestore via JS) ──
+
+    private var trackingHandler: android.os.Handler? = null
+    private var trackingRunnable: Runnable? = null
+
+    @ReactMethod
+    fun startLocationTracking(intervalSec: Int, durationMin: Int, promise: Promise) {
+        try {
+            stopLocationTracking(null) // cancel any prior session
+            val ctx = reactApplicationContext
+            val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            trackingHandler = handler
+            val deadline = System.currentTimeMillis() + durationMin * 60_000L
+
+            val r = object : Runnable {
+                override fun run() {
+                    if (System.currentTimeMillis() > deadline) { Log.d(TAG, "tracking stopped (duration end)"); return }
+                    try {
+                        @SuppressLint("MissingPermission")
+                        val loc = lm.getProviders(true)
+                            .mapNotNull { lm.getLastKnownLocation(it) }
+                            .minByOrNull { it.accuracy }
+                        if (loc != null) {
+                            // Emit to JS so JS can write to Firestore
+                            val map = Arguments.createMap()
+                            map.putDouble("lat", loc.latitude)
+                            map.putDouble("lng", loc.longitude)
+                            map.putDouble("accuracy", loc.accuracy.toDouble())
+                            map.putDouble("ts", System.currentTimeMillis().toDouble())
+                            ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                .emit("onLocationUpdate", map)
+                        }
+                    } catch (e: Exception) { Log.w(TAG, "tracking tick error: ${e.message}") }
+                    handler.postDelayed(this, intervalSec * 1000L)
+                }
+            }
+            trackingRunnable = r
+            handler.post(r)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("TRACK_ERR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun stopLocationTracking(promise: Promise?) {
+        trackingRunnable?.let { trackingHandler?.removeCallbacks(it) }
+        trackingRunnable = null
+        promise?.resolve(true)
     }
 
     @ReactMethod

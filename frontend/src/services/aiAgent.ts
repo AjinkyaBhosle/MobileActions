@@ -88,7 +88,14 @@ ACTION CATALOG (use these exact names):
 53. type_text                  params: {"text": "<text to type into focused field>"}
 54. read_screen                params: {}
 55. daily_briefing             params: {}                    — for "good morning", "what's my status", "give me a briefing", "morning briefing"
-56. small_talk                 params: {"text": "<original utterance>"} — greetings/thanks/jokes/questions like "how are you", "tell me a joke", "good night", "thank you"
+56. small_talk                 params: {"text": "<original utterance>"}
+57. open_file_manager          params: {"folder": "<optional path like 'Download', 'DCIM'>"}
+58. play_file                  params: {"name": "<file name fragment>", "type": "audio|video|any"}
+59. dismiss_alarm              params: {}     — when user says 'turn off the alarm', 'stop the alarm', 'dismiss alarm'
+60. snooze_alarm               params: {}     — when user says 'snooze', 'snooze the alarm', 'remind me in 10 minutes'
+61. start_tracking             params: {"duration": "<minutes, default 30>", "interval": "<seconds, default 30>"}
+62. stop_tracking              params: {}
+63. share_live_location        params: {"contact": "<optional name>", "minutes": "<duration, default 60>"}
 
 PARSING NOTES:
 - 24-hour conversion: "7am" → 7:00, "7:30 pm" → 19:30, "noon" → 12:00, "midnight" → 0:00.
@@ -194,6 +201,33 @@ Response: {"actions":[{"action":"read_screen","params":{}}]}
 
 User: "fetch the article from example.com/news and summarize it"
 Response: {"actions":[{"action":"web_fetch","params":{"url":"example.com/news"}}]}
+
+User: "open file manager"
+Response: {"actions":[{"action":"open_file_manager","params":{}}]}
+
+User: "open download folder"
+Response: {"actions":[{"action":"open_file_manager","params":{"folder":"Download"}}]}
+
+User: "play the song titled hotel california"
+Response: {"actions":[{"action":"play_file","params":{"name":"hotel california","type":"audio"}}]}
+
+User: "play my video about my birthday"
+Response: {"actions":[{"action":"play_file","params":{"name":"birthday","type":"video"}}]}
+
+User: "turn off the alarm" / "stop the alarm" / "dismiss alarm"
+Response: {"actions":[{"action":"dismiss_alarm","params":{}}]}
+
+User: "snooze the alarm" / "snooze for 10 minutes"
+Response: {"actions":[{"action":"snooze_alarm","params":{}}]}
+
+User: "track my location for 30 minutes"
+Response: {"actions":[{"action":"start_tracking","params":{"duration":"30","interval":"30"}}]}
+
+User: "stop tracking"
+Response: {"actions":[{"action":"stop_tracking","params":{}}]}
+
+User: "share my live location with mom for 1 hour"
+Response: {"actions":[{"action":"share_live_location","params":{"contact":"mom","minutes":"60"}}]}
 
 User: "open excel and tap cell A1 and type 100"
 Response: {"actions":[{"action":"open_app","params":{"appName":"excel"}},{"action":"tap_label","params":{"label":"A1"}},{"action":"type_text","params":{"text":"100"}}]}

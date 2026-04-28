@@ -55,6 +55,9 @@ const VALID_ACTIONS = new Set([
   'daily_briefing', 'small_talk',
   // location & real-time data
   'show_location',
+  // file ops + alarm + tracking
+  'open_file_manager', 'play_file', 'dismiss_alarm', 'snooze_alarm',
+  'start_tracking', 'stop_tracking', 'share_live_location',
 ]);
 
 function callOpenAI(userText) {
@@ -245,6 +248,24 @@ const TESTS = [
   { cmd: 'where am i show on map', expect: ['show_location'], check: () => true },
   { cmd: 'open my location on map', expect: ['show_location'], check: () => true },
   { cmd: 'show my current location', expect: ['show_location'], check: () => true },
+
+  // === File ops + media + alarm dismiss + tracking + live location ===
+  { cmd: 'open file manager', expect: ['open_file_manager'], check: () => true },
+  { cmd: 'open the download folder', expect: ['open_file_manager'],
+    check: (a) => /download/i.test((a[0].params.folder || a[0].params.path || '')) },
+  { cmd: 'play the song titled hotel california', expect: ['play_file'],
+    check: (a) => /hotel california/i.test(a[0].params.name) && /audio/i.test(a[0].params.type) },
+  { cmd: 'play my video about my birthday', expect: ['play_file'],
+    check: (a) => /birthday/i.test(a[0].params.name) && /video/i.test(a[0].params.type) },
+  { cmd: 'turn off the alarm', expect: ['dismiss_alarm'], check: () => true },
+  { cmd: 'stop the alarm', expect: ['dismiss_alarm'], check: () => true },
+  { cmd: 'dismiss the alarm', expect: ['dismiss_alarm'], check: () => true },
+  { cmd: 'snooze the alarm', expect: ['snooze_alarm'], check: () => true },
+  { cmd: 'track my location for 30 minutes', expect: ['start_tracking'],
+    check: (a) => Number(a[0].params.duration) === 30 },
+  { cmd: 'stop tracking', expect: ['stop_tracking'], check: () => true },
+  { cmd: 'share my live location with mom for 1 hour', expect: ['share_live_location'],
+    check: (a) => /mom/i.test(a[0].params.contact) && Number(a[0].params.minutes) >= 60 },
 ];
 
 (async () => {
