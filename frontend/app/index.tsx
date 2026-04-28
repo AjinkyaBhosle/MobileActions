@@ -37,9 +37,9 @@ const SUPPORTED_ACTIONS = [
 ];
 
 const QUICK_CHIPS = [
-  'Flashlight on', 'Flashlight off', 'Open camera', 'Set alarm',
-  'Open WiFi', 'What time', 'Open maps', 'Open WhatsApp',
-  'Call', 'Send SMS', 'Volume up', 'Bluetooth',
+  'Flashlight on', 'Flashlight off', 'Open camera', 'Set alarm for 7 am',
+  'Open WiFi', 'What time is it', 'Open maps', 'Open WhatsApp',
+  'Open dialer', 'Open messages', 'Volume up', 'Bluetooth settings',
 ];
 
 export default function HomeScreen() {
@@ -223,6 +223,18 @@ export default function HomeScreen() {
     console.log('[STT] result event. text:', text, 'isFinal:', event.isFinal);
     setTranscript(text);
     if (event.isFinal && text) {
+      // Filter the wake-word itself if STT captured only the echo (Vosk's "hey mobile"
+      // bleeding into Google STT's phrase window). Avoids sending a useless "hey mobile"
+      // prompt to OpenAI.
+      const normalized = text.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '');
+      const WAKE_PHRASES = ['hey mobile', 'hey mobil', 'hi mobile', 'he mobile', 'hey', 'hi', 'ok', 'yes', 'yes sir'];
+      if (WAKE_PHRASES.includes(normalized)) {
+        console.log('[STT] Ignoring wake-word echo / filler:', text);
+        setAppState('idle');
+        setTranscript('');
+        startVoskOnly();
+        return;
+      }
       console.log('[STT] Final result -> processing:', text);
       processCommand(text);
       setTimeout(() => startVoskOnly(), 3000);

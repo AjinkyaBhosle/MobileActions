@@ -517,10 +517,16 @@ export async function speakPremium(
   // Lazy-require so app still builds if these libs aren't installed.
   let FileSystem: any, Audio: any;
   try {
-    FileSystem = require('expo-file-system');
+    // expo-file-system v19 deprecated the writeAsStringAsync/EncodingType API on the default
+    // import and throws a deprecation error. The legacy API still works; import it explicitly.
+    try {
+      FileSystem = require('expo-file-system/legacy');
+    } catch {
+      FileSystem = require('expo-file-system');
+    }
     Audio = require('expo-av').Audio;
   } catch (e) {
-    console.warn('[Premium TTS] expo-av / expo-file-system not installed — falling back to system TTS. Run `yarn add expo-av expo-file-system`.');
+    console.warn('[Premium TTS] expo-av / expo-file-system not installed — falling back to system TTS.');
     return false;
   }
 

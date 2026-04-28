@@ -58,6 +58,7 @@ export async function saveHistory(items: HistoryItem[]): Promise<void> {
   await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(items.slice(0, 200)));
   
   // Sync the latest item to Cloud Firestore (Free tier allows 20k writes/day)
+  // Silently ignore permission errors — local AsyncStorage is source of truth; cloud sync is best-effort.
   if (items.length > 0) {
     try {
       const latest = items[0];
@@ -65,9 +66,8 @@ export async function saveHistory(items: HistoryItem[]): Promise<void> {
         ...latest,
         server_timestamp: serverTimestamp()
       });
-      console.log('[Storage] Synced to Firestore');
-    } catch (e) {
-      console.warn('[Storage] Firestore sync failed (likely offline):', e);
+    } catch {
+      // ignore — likely offline or Firestore rules deny writes; not critical.
     }
   }
 }
