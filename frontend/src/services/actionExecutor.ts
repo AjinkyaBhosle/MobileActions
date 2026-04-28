@@ -47,6 +47,7 @@ async function speak(text: string) {
 
 export async function executeAction(command: ParsedCommand): Promise<ActionResult> {
   const { action, params } = command;
+  console.log('[Executor] action=' + action + ' params=' + JSON.stringify(params || {}));
 
   try {
     switch (action) {
@@ -323,20 +324,32 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
         if (Platform.OS === 'android') {
           const hour = parseInt((params.hour || '7').toString(), 10);
           const minute = parseInt((params.minute || '0').toString(), 10);
+          console.log('[Action] set_alarm -> hour=' + hour + ' minute=' + minute);
           try {
+            // Do NOT use SKIP_UI — Oppo/ColorOS, MIUI, ColorOS, OneUI silently drop alarms
+            // when SKIP_UI=true is requested by non-system apps. Without SKIP_UI the user
+            // sees the clock app open with the alarm pre-filled, which is reliable.
             await IntentLauncher.startActivityAsync('android.intent.action.SET_ALARM', {
               extra: {
                 'android.intent.extra.alarm.HOUR': hour,
                 'android.intent.extra.alarm.MINUTES': minute,
-                'android.intent.extra.alarm.SKIP_UI': true,
                 'android.intent.extra.alarm.MESSAGE': (params.label || 'Mobile Action alarm').toString(),
               },
             });
+            console.log('[Action] set_alarm intent fired OK');
           } catch (e) {
-            console.warn('SET_ALARM intent failed:', e);
-            await IntentLauncher.startActivityAsync('android.intent.action.MAIN', {
-              category: 'android.intent.category.APP_CALENDAR',
-            }).catch(() => {});
+            console.warn('[Action] SET_ALARM intent failed:', e);
+            // Fallback — just open the clock app
+            try {
+              await IntentLauncher.startActivityAsync('android.intent.action.MAIN', {
+                category: 'android.intent.category.APP_CALENDAR',
+              });
+            } catch {}
+            return {
+              success: false,
+              message: 'Could not open alarm app. Please check a clock app is installed.',
+              spoken: 'I could not set the alarm',
+            };
           }
         }
         const hh = (params.hour || '7').toString();
