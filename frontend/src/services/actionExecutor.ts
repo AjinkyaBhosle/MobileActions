@@ -1094,6 +1094,114 @@ export async function executeAction(command: ParsedCommand): Promise<ActionResul
 
       // ── Small talk PLACEHOLDER markers fixed (avoid duplicate case) ──
 
+      // ── Take photo ──
+      case 'take_photo': {
+        const useFront = !!(params.front || params.selfie);
+        if (Platform.OS === 'android') {
+          const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            return { success: false, message: 'Camera permission denied', spoken: 'Please grant camera access' };
+          }
+          await IntentLauncher.startActivityAsync('android.media.action.IMAGE_CAPTURE', {
+            extra: useFront ? { 'android.intent.extras.CAMERA_FACING': 1, 'android.intent.extras.USE_FRONT_CAMERA': true } : {},
+          });
+          // After camera launches, optionally tap the shutter via accessibility (Android shows a "Shutter" or "Take photo" button)
+          if (params.autoShutter && WakeWordModule?.accClickLabel) {
+            await new Promise(r => setTimeout(r, 1500));
+            try { await WakeWordModule.accClickLabel('shutter'); } catch {}
+          }
+        }
+        speak(useFront ? 'Front camera ready' : 'Camera ready');
+        return { success: true, message: 'Camera opened', spoken: useFront ? 'Front camera' : 'Camera' };
+      }
+
+      // ── Record audio ──
+      case 'record_audio': {
+        if (Platform.OS === 'android') {
+          await IntentLauncher.startActivityAsync('android.provider.MediaStore.RECORD_SOUND_ACTION');
+        }
+        speak('Audio recorder open');
+        return { success: true, message: 'Audio recorder', spoken: 'Audio recorder open' };
+      }
+
+      // ── Record video ──
+      case 'record_video': {
+        if (Platform.OS === 'android') {
+          await IntentLauncher.startActivityAsync('android.media.action.VIDEO_CAPTURE');
+        }
+        speak('Video recorder open');
+        return { success: true, message: 'Video recorder', spoken: 'Video recorder open' };
+      }
+
+      // ── Clipboard / Edit operations (work in any text field via accessibility) ──
+      case 'copy_text': {
+        const text = (params.text || '').toString();
+        if (text && WakeWordModule?.setClipboard) {
+          try { await WakeWordModule.setClipboard(text); } catch (e) { console.warn(e); }
+          speak('Copied');
+          return { success: true, message: `Copied: ${text}`, spoken: 'Copied' };
+        }
+        // Otherwise copy whatever is selected in the focused field
+        try { await WakeWordModule.accClipboardAction('COPY'); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        speak('Copied');
+        return { success: true, message: 'Copied selection', spoken: 'Copied' };
+      }
+      case 'cut_text': {
+        try { await WakeWordModule.accClipboardAction('CUT'); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        speak('Cut');
+        return { success: true, message: 'Cut selection', spoken: 'Cut' };
+      }
+      case 'paste_text': {
+        const inline = (params.text || '').toString();
+        if (inline && WakeWordModule?.setClipboard) {
+          try { await WakeWordModule.setClipboard(inline); } catch {}
+        }
+        try { await WakeWordModule.accClipboardAction('PASTE'); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        speak('Pasted');
+        return { success: true, message: 'Pasted', spoken: 'Pasted' };
+      }
+      case 'select_all': {
+        try { await WakeWordModule.accClipboardAction('SELECT_ALL'); } catch (e: any) {
+          return { success: false, message: 'Enable accessibility', spoken: 'Please enable accessibility' };
+        }
+        speak('Selected all');
+        return { success: true, message: 'Selected all', spoken: 'Selected all' };
+      }
+
+      // ── AI chat / question / audit / compare / solve / answer ──
+      // Free-form OpenAI Q&A. Handles: 'compare X and Y', 'audit my last note',
+      // 'solve 2x+5=11', 'what is the capital of France', 'why is the sky blue',
+      // 'is this email professional', 'tell me a story', 'explain quantum mechanics'
+      case 'ai_chat':
+      case 'ai_question':
+      case 'ai_audit':
+      case 'ai_compare':
+      case 'ai_solve': {
+        const question = (params.text || params.query || params.question || '').toString().trim();
+        if (!question) return { success: false, message: 'Ask what?', spoken: 'What is your question?' };
+        try {
+          const { jarvisReplyWithAI } = await import('./aiAgent');
+          const persona = await getPersona();
+          // Override with a more capable system prompt for reasoning tasks.
+          const sys = persona === 'jarvis'
+            ? 'You are J.A.R.V.I.S. — a witty British-butler AI that answers ANY question concisely and accurately. Audit / compare / solve / explain / advise as needed. Address the user as sir. Replies must fit in 1-3 spoken sentences. No markdown.'
+            : 'You are a concise helpful assistant. Answer ANY question accurately in 1-3 sentences. No markdown.';
+          // Use chat() directly with the override prompt
+          const { chat } = await import('./aiAgent');
+          const reply = await chat(sys, question);
+          speak(reply);
+          return { success: true, message: reply, spoken: reply };
+        } catch (e: any) {
+          return { success: false, message: 'AI failed: ' + (e?.message || ''), spoken: 'I could not answer that' };
+        }
+      }
+
       // ── Unknown ──
       default:
         speak("Sorry, I didn't understand that command");

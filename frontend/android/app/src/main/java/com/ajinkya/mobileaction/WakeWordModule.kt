@@ -538,6 +538,38 @@ class WakeWordModule(reactContext: ReactApplicationContext) : ReactContextBaseJa
         promise?.resolve(true)
     }
 
+    /** Set system clipboard text. */
+    @ReactMethod
+    fun setClipboard(text: String, promise: Promise) {
+        try {
+            val cm = reactApplicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("MobileAction", text))
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("CLIP_ERR", e.message, e)
+        }
+    }
+
+    /** Read system clipboard text. */
+    @ReactMethod
+    fun getClipboard(promise: Promise) {
+        try {
+            val cm = reactApplicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val txt = cm.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+            promise.resolve(txt)
+        } catch (e: Exception) {
+            promise.reject("CLIP_ERR", e.message, e)
+        }
+    }
+
+    /** Perform clipboard accessibility actions on the focused EditText. */
+    @ReactMethod
+    fun accClipboardAction(name: String, promise: Promise) {
+        val svc = AppControlAccessibilityService.get()
+        if (svc == null) { promise.reject("NO_ACC", "Accessibility not enabled"); return }
+        promise.resolve(svc.clipboardAction(name))
+    }
+
     @ReactMethod
     fun addListener(eventName: String) {
         // Keep NativeEventEmitter happy

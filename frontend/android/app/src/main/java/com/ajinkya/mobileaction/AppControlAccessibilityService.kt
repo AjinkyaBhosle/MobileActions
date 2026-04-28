@@ -70,9 +70,31 @@ class AppControlAccessibilityService : AccessibilityService() {
         return node.performAction(action)
     }
 
+    /** Perform a clipboard action on the focused EditText. */
+    fun clipboardAction(name: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = findNode(root) { it.isFocused && it.isEditable } ?: findNode(root) { it.isEditable } ?: return false
+        val action = when (name.uppercase()) {
+            "COPY"       -> AccessibilityNodeInfo.ACTION_COPY
+            "CUT"        -> AccessibilityNodeInfo.ACTION_CUT
+            "PASTE"      -> AccessibilityNodeInfo.ACTION_PASTE
+            "SELECT_ALL" -> AccessibilityNodeInfo.ACTION_SELECT
+            else -> return false
+        }
+        if (name.uppercase() == "SELECT_ALL") {
+            // Need to set selection range to whole text
+            val text = node.text?.toString() ?: ""
+            val args = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, text.length)
+            }
+            return node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args)
+        }
+        return node.performAction(action)
+    }
+
     /** Press global system buttons. */
-    fun globalAction(name: String): Boolean {
-        val act = when (name.uppercase()) {
+    fun globalAction(name: String): Boolean {        val act = when (name.uppercase()) {
             "BACK" -> GLOBAL_ACTION_BACK
             "HOME" -> GLOBAL_ACTION_HOME
             "RECENTS" -> GLOBAL_ACTION_RECENTS

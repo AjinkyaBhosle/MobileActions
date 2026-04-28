@@ -96,6 +96,25 @@ ACTION CATALOG (use these exact names):
 61. start_tracking             params: {"duration": "<minutes, default 30>", "interval": "<seconds, default 30>"}
 62. stop_tracking              params: {}
 63. share_live_location        params: {"contact": "<optional name>", "minutes": "<duration, default 60>"}
+64. take_photo                 params: {"front": "<true if selfie>", "autoShutter": "<true to auto-click after open>"}
+65. record_audio               params: {}
+66. record_video               params: {}
+67. copy_text                  params: {"text": "<optional text to set on clipboard; otherwise copies current selection>"}
+68. cut_text                   params: {}
+69. paste_text                 params: {"text": "<optional text to put on clipboard before pasting>"}
+70. select_all                 params: {}
+71. ai_chat                    params: {"text": "<the user's question/audit/compare/solve/answer/chat request>"}  — for ANYTHING that is not a phone-control action: questions, math, reasoning, comparisons, audits, jokes, advice, explanations, "what is", "why", "how", "tell me about", "compare X and Y", "is this correct", etc.
+
+CRITICAL FALLBACK RULE:
+- If a user's command does NOT clearly match any phone-control action above (1-70),
+  AND it's not blank/nonsense, route it to ai_chat with the original text. The AI
+  will reason about it. NEVER return {"actions": []} for an intelligible question.
+- Example: "tell me about quantum physics" → ai_chat
+           "is 2 plus 2 four" → ai_chat
+           "compare iphone vs samsung" → ai_chat
+           "audit this email i wrote" → ai_chat
+           "what should i wear today" → ai_chat (if no specific app action requested)
+- Real-time data still goes to web_search (gold rate, sports score, weather).
 
 PARSING NOTES:
 - 24-hour conversion: "7am" → 7:00, "7:30 pm" → 19:30, "noon" → 12:00, "midnight" → 0:00.
@@ -229,6 +248,50 @@ Response: {"actions":[{"action":"stop_tracking","params":{}}]}
 User: "share my live location with mom for 1 hour"
 Response: {"actions":[{"action":"share_live_location","params":{"contact":"mom","minutes":"60"}}]}
 
+User: "take a photo" / "click a picture"
+Response: {"actions":[{"action":"take_photo","params":{}}]}
+
+User: "take a selfie"
+Response: {"actions":[{"action":"take_photo","params":{"front":true}}]}
+
+User: "record audio"
+Response: {"actions":[{"action":"record_audio","params":{}}]}
+
+User: "record a video"
+Response: {"actions":[{"action":"record_video","params":{}}]}
+
+User: "copy hello world to clipboard"
+Response: {"actions":[{"action":"copy_text","params":{"text":"hello world"}}]}
+
+User: "paste"
+Response: {"actions":[{"action":"paste_text","params":{}}]}
+
+User: "select all"
+Response: {"actions":[{"action":"select_all","params":{}}]}
+
+User: "what is 2 plus 2"
+Response: {"actions":[{"action":"ai_chat","params":{"text":"what is 2 plus 2"}}]}
+
+User: "compare iphone vs samsung"
+Response: {"actions":[{"action":"ai_chat","params":{"text":"compare iphone vs samsung"}}]}
+
+User: "audit my last note for grammar mistakes"
+Response: {"actions":[{"action":"ai_chat","params":{"text":"audit my last note for grammar mistakes"}}]}
+
+User: "solve x squared plus 5x plus 6 equals 0"
+Response: {"actions":[{"action":"ai_chat","params":{"text":"solve x squared plus 5x plus 6 equals 0"}}]}
+
+User: "tell me about quantum physics"
+Response: {"actions":[{"action":"ai_chat","params":{"text":"tell me about quantum physics"}}]}
+
+(Vague/incomplete user input — model should still route sensibly:)
+User: "uhh, the thing... call mom?"
+Response: {"actions":[{"action":"make_call","params":{"contact":"mom"}}]}
+
+(Misspelled — model should normalize:)
+User: "set alram for sevn am"
+Response: {"actions":[{"action":"set_alarm","params":{"hour":"7","minute":"0"}}]}
+
 User: "open excel and tap cell A1 and type 100"
 Response: {"actions":[{"action":"open_app","params":{"appName":"excel"}},{"action":"tap_label","params":{"label":"A1"}},{"action":"type_text","params":{"text":"100"}}]}
 
@@ -325,7 +388,7 @@ export const processCommandWithAI = async (
 
 // ─── Helper: free-form OpenAI calls (translation, summary, news) ───────────
 
-async function chat(systemPrompt: string, userPrompt: string, opts: { json?: boolean } = {}): Promise<string> {
+export async function chat(systemPrompt: string, userPrompt: string, opts: { json?: boolean } = {}): Promise<string> {
   if (!OPENAI_API_KEY) throw new Error('Missing OpenAI API Key');
   const response = await axios.post(
     'https://api.openai.com/v1/chat/completions',

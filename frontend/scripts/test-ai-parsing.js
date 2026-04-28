@@ -58,6 +58,10 @@ const VALID_ACTIONS = new Set([
   // file ops + alarm + tracking
   'open_file_manager', 'play_file', 'dismiss_alarm', 'snooze_alarm',
   'start_tracking', 'stop_tracking', 'share_live_location',
+  // photo/audio/video + clipboard + AI chat
+  'take_photo', 'record_audio', 'record_video',
+  'copy_text', 'cut_text', 'paste_text', 'select_all',
+  'ai_chat', 'ai_question', 'ai_audit', 'ai_compare', 'ai_solve',
 ]);
 
 function callOpenAI(userText) {
@@ -126,7 +130,8 @@ const TESTS = [
     check: (a) => /airport/i.test(a[0].params.destination || a[0].params.query || '') },
   { cmd: 'open camera', expect: ['open_camera'], check: () => true },
   { cmd: 'open wifi settings', expect: ['wifi_settings'], check: () => true },
-  { cmd: 'sjkdfh blah blah random nonsense', expect: [], check: (a) => a.length === 0 },
+  { cmd: 'sjkdfh blah blah random nonsense', expect: [],
+    check: (a) => a.length === 0 || a[0].action === 'ai_chat' },
   { cmd: 'call ajinkya and message him saying meeting at 5', expect: ['make_call'],
     check: (a) => a.find(x => x.action === 'make_call') && a.find(x => (x.action === 'send_sms' || x.action === 'whatsapp_send') && /5/.test(x.params.message || '')) },
 
@@ -266,6 +271,32 @@ const TESTS = [
   { cmd: 'stop tracking', expect: ['stop_tracking'], check: () => true },
   { cmd: 'share my live location with mom for 1 hour', expect: ['share_live_location'],
     check: (a) => /mom/i.test(a[0].params.contact) && Number(a[0].params.minutes) >= 60 },
+
+  // === Photo / audio / video / clipboard / AI chat ===
+  { cmd: 'take a photo', expect: ['take_photo'], check: () => true },
+  { cmd: 'take a selfie', expect: ['take_photo'], check: (a) => a[0].params.front === true },
+  { cmd: 'record audio', expect: ['record_audio'], check: () => true },
+  { cmd: 'record a video', expect: ['record_video'], check: () => true },
+  { cmd: 'copy hello world to clipboard', expect: ['copy_text'],
+    check: (a) => /hello world/i.test(a[0].params.text) },
+  { cmd: 'paste', expect: ['paste_text'], check: () => true },
+  { cmd: 'select all', expect: ['select_all'], check: () => true },
+  { cmd: 'what is 2 plus 2', expect: ['ai_chat'],
+    check: (a) => /2 plus 2|2\+2/i.test(a[0].params.text || a[0].params.query || '') },
+  { cmd: 'compare iphone vs samsung', expect: ['ai_chat'],
+    check: (a) => /iphone|samsung/i.test(a[0].params.text || a[0].params.query || '') },
+  { cmd: 'audit my last note for grammar mistakes', expect: ['ai_chat'],
+    check: (a) => /grammar|audit/i.test(a[0].params.text || a[0].params.query || '') },
+  { cmd: 'solve x squared plus 5x plus 6 equals 0', expect: ['ai_chat'],
+    check: (a) => /x|solve/i.test(a[0].params.text || a[0].params.query || '') },
+  { cmd: 'tell me about quantum physics', expect: ['ai_chat'],
+    check: (a) => /quantum/i.test(a[0].params.text || a[0].params.query || '') },
+
+  // === Vague / misspelled (model should still parse) ===
+  { cmd: 'uhh, the thing... call mom?', expect: ['make_call'],
+    check: (a) => /mom/i.test(a[0].params.contact) },
+  { cmd: 'set alram for sevn am', expect: ['set_alarm'],
+    check: (a) => Number(a[0].params.hour) === 7 },
 ];
 
 (async () => {
